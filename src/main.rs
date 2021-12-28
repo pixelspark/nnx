@@ -13,7 +13,7 @@ use structopt::StructOpt;
 use wonnx::onnx::{ModelProto, TensorShapeProto, ValueInfoProto};
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "wonnx", about = "GPU-accelerated ONNX inference")]
+#[structopt(name = "nnx", about = "GPU-accelerated ONNX inference from the command line")]
 struct Opt {
 	/// Activate debug mode
 	// short and long flags (-d, --debug) will be deduced from the field's name
@@ -25,28 +25,28 @@ struct Opt {
 	model: PathBuf,
 
 	/// Node to take output from (defaults to the first output when not specified)
-	#[structopt(short, long)]
+	#[structopt(long)]
 	output_name: Option<String>,
 
 	/// Node to feed input to (defaults to the first input when not specified)
-	#[structopt(short, long)]
+	#[structopt(long)]
 	input_name: Option<String>,
 
 	/// Input image
-	#[structopt(short, long, parse(from_os_str))]
+	#[structopt(short = "i", long, parse(from_os_str))]
 	input_image: Option<PathBuf>,
 
-	/// Labels file
+	/// Path to a labels file (each line containing a single label)
 	#[structopt(short, long, parse(from_os_str))]
 	labels: Option<PathBuf>,
 
-	/// Number of labels to print
+	/// Number of labels to print (default: 10)
 	#[structopt(long)]
 	top: Option<usize>,
 
-	/// Whether to print probabilities. Defaults to false when top is Some(1)
+	/// Whether to print probabilities
 	#[structopt(long)]
-	probabilities: Option<bool>,
+	probabilities: bool,
 }
 
 fn get_labels(path: &Path) -> Vec<String> {
@@ -152,6 +152,10 @@ async fn run() {
 		for i in inputs {
 			println!("Input {} {} {:?}", i.get_name(), i.get_doc_string(), get_input_dimensions(i));
 		}
+
+		for opset in model.get_opset_import() {
+			println!("Opset: {} {}", opset.get_domain(), opset.get_version());
+		}
 	}
 
 	let session = wonnx::Session::from_path(&model_path).await.expect("failed to load model");
@@ -219,9 +223,8 @@ async fn run() {
 			probabilities.sort_unstable_by(|a, b| b.1.partial_cmp(a.1).unwrap());
 
 			let top = opt.top.unwrap_or(10);
-			let print_probabilities = opt.probabilities.unwrap_or(top != 1);
-			for i in 0..top {
-				if print_probabilities {
+			for i in 0..top.min(labels.len()) {
+				if opt.probabilities {
 					println!("{}: {}", labels[probabilities[i].0], probabilities[i].1);
 				} else {
 					println!("{}", labels[probabilities[i].0]);
