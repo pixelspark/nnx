@@ -39,6 +39,14 @@ struct Opt {
 	/// Labels file
 	#[structopt(short, long, parse(from_os_str))]
 	labels: Option<PathBuf>,
+
+	/// Number of labels to print
+	#[structopt(long)]
+	top: Option<usize>,
+
+	/// Whether to print probabilities. Defaults to false when top is Some(1)
+	#[structopt(long)]
+	probabilities: Option<bool>,
 }
 
 fn get_labels(path: &Path) -> Vec<String> {
@@ -69,7 +77,32 @@ fn get_input_dimensions(info: &ValueInfoProto) -> Vec<usize> {
 	}
 }
 
-pub fn load_image(image_path: &Path, width: usize, height: usize) -> ndarray::ArrayBase<ndarray::OwnedRepr<f32>, ndarray::Dim<[usize; 4]>> {
+// Loads an image as (1,1,w,h) with pixels ranging 0...1 for 0..255 pixel values
+pub fn load_bw_image(image_path: &Path, width: usize, height: usize) -> ndarray::ArrayBase<ndarray::OwnedRepr<f32>, ndarray::Dim<[usize; 4]>> {
+	let image_buffer: ImageBuffer<Rgb<u8>, Vec<u8>> = image::open(image_path)
+		.unwrap()
+		.resize_exact(width as u32, height as u32, FilterType::Nearest)
+		.to_rgb8();
+
+	// Python:
+	// # image[y, x, RGB]
+	// # x==0 --> left
+	// # y==0 --> top
+
+	// See https://github.com/onnx/models/blob/master/vision/classification/imagenet_inference.ipynb
+	// for pre-processing image.
+	// WARNING: Note order of declaration of arguments: (_,c,j,i)
+	ndarray::Array::from_shape_fn((1, 1, width, height), |(_, c, j, i)| {
+		let pixel = image_buffer.get_pixel(i as u32, j as u32);
+		let channels = pixel.channels();
+
+		// range [0, 255] -> range [0, 1]
+		(channels[c] as f32) / 255.0
+	})
+}
+
+// Loads an image as (1, w, h, 3)
+pub fn load_rgb_image(image_path: &Path, width: usize, height: usize) -> ndarray::ArrayBase<ndarray::OwnedRepr<f32>, ndarray::Dim<[usize; 4]>> {
 	let image_buffer: ImageBuffer<Rgb<u8>, Vec<u8>> = image::open(image_path)
 		.unwrap()
 		.resize_to_fill(width as u32, height as u32, FilterType::Nearest)
@@ -151,7 +184,13 @@ async fn run() {
 
 	let data = if let Some(input_image) = opt.input_image {
 		if input_dims.len() == 4 {
-			Some(load_image(&input_image, input_dims[2], input_dims[3]))
+			if input_dims[1] == 3 {
+				Some(load_rgb_image(&input_image, input_dims[2], input_dims[3]))
+			} else if input_dims[1] == 1 {
+				Some(load_bw_image(&input_image, input_dims[2], input_dims[3]))
+			} else {
+				None
+			}
 		} else {
 			None
 		}
@@ -179,12 +218,18 @@ async fn run() {
 			let mut probabilities = output.iter().enumerate().collect::<Vec<_>>();
 			probabilities.sort_unstable_by(|a, b| b.1.partial_cmp(a.1).unwrap());
 
-			for i in 0..10 {
-				println!("{}: {}", labels[probabilities[i].0], probabilities[i].1);
+			let top = opt.top.unwrap_or(10);
+			let print_probabilities = opt.probabilities.unwrap_or(top != 1);
+			for i in 0..top {
+				if print_probabilities {
+					println!("{}: {}", labels[probabilities[i].0], probabilities[i].1);
+				} else {
+					println!("{}", labels[probabilities[i].0]);
+				}
 			}
 		}
 		None => {
-			println!("Result: {:?}", output);
+			println!("{:?}", output);
 		}
 	}
 }
