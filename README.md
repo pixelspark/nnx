@@ -1,8 +1,30 @@
 # NNX
 
-GPU-accelerated neural network inference from the command line.
+GPU-accelerated neural network inference from the command line using [wonnx](https://github.com/haixuanTao/wonnx).
 
-Uses [wonnx](https://github.com/haixuanTao/wonnx).
+ONNX defines a standardized format to exchange machine learning models. However, up to this point there is no easy way to
+perform one-off inference using such a model without resorting to Python. Installation of Python and the required libraries
+(e.g. TensorFlow and underlying GPU setup) can be cumbersome. Additionally specific code is always needed to transfer
+inputs (images, text, etc.) in and out of the formats required by the model (i.e. image classification models want their
+images as fixed-size tensors with the pixel values normalized to specific values, et cetera).
+
+This project provides a very simple all-in-one binary command line tool that can be used to perform inference using ONNX
+models on the GPU. Thanks to the [wonnx](https://github.com/haixuanTao/wonnx) library inference is performed on the GPU
+through [wgpu][https://wgpu.rs], which is a Rust implementation of the WebGPU standard, supported on Windows, macOS, Linux
+and (in the future) even inside the browser, without having to install specific drivers (wgpu will use Direct3D, Metal or
+Vulkan depending on the platform).
+
+NNX tries to make educated guesses about how to transform input and output for a model. These guesses are a default - i.e.
+it should always be possible to override them. The goal is to reduce the amount of configuration required to be able to
+run a model. Currently the following heuristics are applied:
+
+- The first input and first output specified in the ONNX file are used by default.
+- Models taking inputs of shape (1,3,w,h) and (3,w,h) will be fed images resized to w\*h with pixel values normalized to
+  0...1 (currently we also apply the SqueezeNet normalization)
+- Similarly, models taking inputs of shape (1,1,w,h) and (1,w,h) will be fed black-and-white images with pixel values
+  normalized to 0...1.
+- When a label file is supplied, an output vector of shape (n,) will be interpreted as providing the probabilities for each
+  class. The label for each class is taken from the n'th line in the label file.
 
 ## Usage
 
