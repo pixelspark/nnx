@@ -28,3 +28,70 @@ Seven
 
 - Replace `nnx` with `cargo run --release --` to run development version
 - Prepend `RUST_LOG=nnx=info` to see useful information
+
+## End-to-end example with Keras
+
+1. `pip install tensorflow onnx tf2onnx`
+
+2. Create a very simple model for the MNINST digits:
+
+```python
+from tensorflow.keras.datasets import mnist
+(train_images, train_labels), (test_images, test_labels) = mnist.load_data()
+
+# train_images will be (60000,28,28) i.e. 60k black-and-white images of 28x28 pixels (which are ints between 0..255)
+# train_labels will be (60000,) i.e. 60k integers ranging 0...9
+# test_images/test_labels are similar but only have 10k items
+
+# Build model
+from tensorflow import keras
+from tensorflow.keras import layers
+
+# Convert images to have pixel values as floats between 0...1
+train_images_input = train_images.astype("float32") / 255
+
+model = keras.Sequential([
+    layers.Reshape((28*28,), input_shape=(28,28)),
+    layers.Dense(512, activation = 'relu'),
+    layers.Dropout(rate=0.01),
+    layers.Dense(10,  activation = 'softmax')
+])
+
+model.compile(optimizer="rmsprop", loss="sparse_categorical_crossentropy", metrics=["accuracy"])
+
+# Train the model
+model.fit(train_images_input, train_labels, epochs=20, batch_size=1024)
+```
+
+3. Save Keras model to ONNX with inferred dimensions:
+
+```python
+import tf2onnx
+import tensorflow as tf
+import onnx
+input_signature = [tf.TensorSpec([1,28,28], tf.float32, name='input')]
+onnx_model, _ = tf2onnx.convert.from_keras(model, input_signature, opset=13)
+
+from onnx import helper, shape_inference
+inferred_model = shape_inference.infer_shapes(onnx_model)
+
+onnx.save(onnx_model, "tymnist.onnx")
+onnx.save(inferred_model, "tymnist-inferred.onnx")
+```
+
+4. Infer with NNX:
+
+```sh
+nnx  ./tymnist-inferred.onnx -i ./data/mnist-7.png
+```
+
+5. compare inference result with what Keras would generate (`pip install numpy pillow matplotlib`):
+
+```python
+import PIL
+import numpy
+import matplotlib.pyplot as plt
+m5 = PIL.Image.open("data/mnist-7.png").resize((28,28), PIL.Image.ANTIALIAS)
+nm5 = numpy.array(m5).reshape((1,28,28))
+model.predict(nm5)
+```
