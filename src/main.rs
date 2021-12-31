@@ -187,10 +187,22 @@ async fn run() {
 	let mut inputs = HashMap::<String, &[f32]>::new();
 
 	let data = if let Some(input_image) = opt.input_image {
-		if input_dims.len() == 4 {
+		if input_dims.len() == 3 {
+			if input_dims[0] == 3 {
+				log::info!("input is (3,?,?), loading as RGB image");
+				Some(load_rgb_image(&input_image, input_dims[1], input_dims[2]))
+			} else if input_dims[0] == 1 {
+				log::info!("input is (1,?,?), loading as BW image");
+				Some(load_bw_image(&input_image, input_dims[1], input_dims[2]))
+			} else {
+				None
+			}
+		} else if input_dims.len() == 4 {
 			if input_dims[1] == 3 {
+				log::info!("input is (?,3,?,?), loading as RGB image");
 				Some(load_rgb_image(&input_image, input_dims[2], input_dims[3]))
 			} else if input_dims[1] == 1 {
+				log::info!("input is (?,1,?,?), loading as BW image");
 				Some(load_bw_image(&input_image, input_dims[2], input_dims[3]))
 			} else {
 				None
