@@ -2,6 +2,8 @@
 
 GPU-accelerated neural network inference from the command line.
 
+Uses [wonnx](https://github.com/haixuanTao/wonnx).
+
 ## Usage
 
 ```sh
@@ -24,4 +26,5 @@ $ nnx ./data/opt-mnist.onnx --input-image ./data/mnist-7.png --labels ./data/mni
 Seven
 ```
 
-(Replace `nnx` with `cargo run --release --` to run development version)
+- Replace `nnx` with `cargo run --release --` to run development version
+- Prepend `RUST_LOG=nnx=info` to see useful information
