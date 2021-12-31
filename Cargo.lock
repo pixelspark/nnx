@@ -825,7 +825,9 @@ dependencies = [
 name = "nnx"
 version = "0.1.0"
 dependencies = [
+ "env_logger",
  "image",
+ "log",
  "ndarray",
  "pollster",
  "protobuf",

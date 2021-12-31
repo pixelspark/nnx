@@ -15,11 +15,6 @@ use wonnx::onnx::{ModelProto, TensorShapeProto, ValueInfoProto};
 #[derive(Debug, StructOpt)]
 #[structopt(name = "nnx", about = "GPU-accelerated ONNX inference from the command line")]
 struct Opt {
-	/// Activate debug mode
-	// short and long flags (-d, --debug) will be deduced from the field's name
-	#[structopt(short, long)]
-	debug: bool,
-
 	/// Model file (.onnx)
 	#[structopt(parse(from_os_str))]
 	model: PathBuf,
@@ -138,30 +133,32 @@ pub fn load_rgb_image(image_path: &Path, width: usize, height: usize) -> ndarray
 }
 
 async fn run() {
+	env_logger::init();
 	let opt = Opt::from_args();
+	let debug = log::log_enabled!(log::Level::Info);
 
 	let model_path = opt.model.into_os_string().into_string().expect("invalid path");
 	let model = ModelProto::parse_from_bytes(&std::fs::read(&model_path).expect("ONNX Model path not found.")).expect("Could not deserialize the Model");
 
-	if opt.debug {
-		println!("Model version: {}", model.get_model_version());
-		println!("IR version: {}", model.get_ir_version());
-		println!("Producer name: {}", model.get_producer_name());
-		println!("Producer version: {}", model.get_producer_version());
+	if debug {
+		log::info!("Model version: {}", model.get_model_version());
+		log::info!("IR version: {}", model.get_ir_version());
+		log::info!("Producer name: {}", model.get_producer_name());
+		log::info!("Producer version: {}", model.get_producer_version());
 		let inputs = model.get_graph().get_input();
 		for i in inputs {
-			println!("Input {} {} {:?}", i.get_name(), i.get_doc_string(), get_input_dimensions(i));
+			log::info!("Input {} {} {:?}", i.get_name(), i.get_doc_string(), get_input_dimensions(i));
 		}
 
 		for opset in model.get_opset_import() {
-			println!("Opset: {} {}", opset.get_domain(), opset.get_version());
+			log::info!("Opset: {} {}", opset.get_domain(), opset.get_version());
 		}
 	}
 
 	let session = wonnx::Session::from_path(&model_path).await.expect("failed to load model");
 
-	if opt.debug {
-		println!("Outputs: {:?}", session.outputs);
+	if debug {
+		log::info!("Outputs: {}", session.outputs.iter().map(|x| x.get_name()).collect::<Vec<&str>>().join(","));
 	}
 
 	let input_name = match opt.input_name {
@@ -176,8 +173,8 @@ async fn run() {
 		.find(|x| x.get_name() == input_name)
 		.expect("input not found");
 	let input_dims = get_input_dimensions(input_info);
-	if opt.debug {
-		println!(
+	if debug {
+		log::info!(
 			"Using input: {} ({})",
 			input_name,
 			input_dims.iter().map(|x| x.to_string()).collect::<Vec<_>>().join("x")
