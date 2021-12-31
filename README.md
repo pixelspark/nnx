@@ -33,7 +33,7 @@ Seven
 
 1. `pip install tensorflow onnx tf2onnx`
 
-2. Create a very simple model for the MNINST digits:
+2. Create a very simple model for the MNIST digits:
 
 ```python
 from tensorflow.keras.datasets import mnist
