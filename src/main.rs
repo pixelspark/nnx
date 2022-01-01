@@ -1,6 +1,3 @@
-use image::imageops::FilterType;
-use image::{ImageBuffer, Pixel, Rgb};
-use ndarray::s;
 use protobuf::{self, Message};
 use std::path::Path;
 use std::{
@@ -10,7 +7,10 @@ use std::{
 	path::PathBuf,
 };
 use structopt::StructOpt;
-use wonnx::onnx::{ModelProto, TensorShapeProto, ValueInfoProto};
+use wonnx::onnx::ModelProto;
+
+mod util;
+use util::*;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "nnx", about = "GPU-accelerated ONNX inference from the command line")]
@@ -49,89 +49,6 @@ fn get_labels(path: &Path) -> Vec<String> {
 	file.lines().map(|line| line.unwrap()).collect()
 }
 
-fn get_shape_dimensions(info: &TensorShapeProto) -> Vec<usize> {
-	info.get_dim()
-		.iter()
-		.map(|d| match d.value {
-			Some(wonnx::onnx::TensorShapeProto_Dimension_oneof_value::dim_value(i)) => i as usize,
-			_ => 0,
-		})
-		.collect()
-}
-
-fn get_input_dimensions(info: &ValueInfoProto) -> Vec<usize> {
-	match &info.get_field_type().value {
-		Some(x) => match x {
-			wonnx::onnx::TypeProto_oneof_value::tensor_type(t) => get_shape_dimensions(t.get_shape()),
-			wonnx::onnx::TypeProto_oneof_value::sequence_type(_) => todo!(),
-			wonnx::onnx::TypeProto_oneof_value::map_type(_) => todo!(),
-			wonnx::onnx::TypeProto_oneof_value::optional_type(_) => todo!(),
-			wonnx::onnx::TypeProto_oneof_value::sparse_tensor_type(_) => todo!(),
-		},
-		None => vec![],
-	}
-}
-
-// Loads an image as (1,1,w,h) with pixels ranging 0...1 for 0..255 pixel values
-pub fn load_bw_image(image_path: &Path, width: usize, height: usize) -> ndarray::ArrayBase<ndarray::OwnedRepr<f32>, ndarray::Dim<[usize; 4]>> {
-	let image_buffer: ImageBuffer<Rgb<u8>, Vec<u8>> = image::open(image_path)
-		.unwrap()
-		.resize_exact(width as u32, height as u32, FilterType::Nearest)
-		.to_rgb8();
-
-	// Python:
-	// # image[y, x, RGB]
-	// # x==0 --> left
-	// # y==0 --> top
-
-	// See https://github.com/onnx/models/blob/master/vision/classification/imagenet_inference.ipynb
-	// for pre-processing image.
-	// WARNING: Note order of declaration of arguments: (_,c,j,i)
-	ndarray::Array::from_shape_fn((1, 1, width, height), |(_, c, j, i)| {
-		let pixel = image_buffer.get_pixel(i as u32, j as u32);
-		let channels = pixel.channels();
-
-		// range [0, 255] -> range [0, 1]
-		(channels[c] as f32) / 255.0
-	})
-}
-
-// Loads an image as (1, w, h, 3)
-pub fn load_rgb_image(image_path: &Path, width: usize, height: usize) -> ndarray::ArrayBase<ndarray::OwnedRepr<f32>, ndarray::Dim<[usize; 4]>> {
-	let image_buffer: ImageBuffer<Rgb<u8>, Vec<u8>> = image::open(image_path)
-		.unwrap()
-		.resize_to_fill(width as u32, height as u32, FilterType::Nearest)
-		.to_rgb8();
-
-	// Python:
-	// # image[y, x, RGB]
-	// # x==0 --> left
-	// # y==0 --> top
-
-	// See https://github.com/onnx/models/blob/master/vision/classification/imagenet_inference.ipynb
-	// for pre-processing image.
-	// WARNING: Note order of declaration of arguments: (_,c,j,i)
-	let mut array = ndarray::Array::from_shape_fn((1, 3, 224, 224), |(_, c, j, i)| {
-		let pixel = image_buffer.get_pixel(i as u32, j as u32);
-		let channels = pixel.channels();
-
-		// range [0, 255] -> range [0, 1]
-		(channels[c] as f32) / 255.0
-	});
-
-	// Normalize channels to mean=[0.485, 0.456, 0.406] and std=[0.229, 0.224, 0.225]
-	let mean = [0.485, 0.456, 0.406];
-	let std = [0.229, 0.224, 0.225];
-	for c in 0..3 {
-		let mut channel_array = array.slice_mut(s![0, c, .., ..]);
-		channel_array -= mean[c];
-		channel_array /= std[c];
-	}
-
-	// Batch of 1
-	array
-}
-
 async fn run() {
 	env_logger::init();
 	let opt = Opt::from_args();
@@ -147,7 +64,7 @@ async fn run() {
 		log::info!("Producer version: {}", model.get_producer_version());
 		let inputs = model.get_graph().get_input();
 		for i in inputs {
-			log::info!("Input {} {} {:?}", i.get_name(), i.get_doc_string(), get_input_dimensions(i));
+			log::info!("Input {} {} {:?}", i.get_name(), i.get_doc_string(), i.input_dimensions());
 		}
 
 		for opset in model.get_opset_import() {
@@ -172,7 +89,7 @@ async fn run() {
 		.iter()
 		.find(|x| x.get_name() == input_name)
 		.expect("input not found");
-	let input_dims = get_input_dimensions(input_info);
+	let input_dims = input_info.input_dimensions();
 	if debug {
 		log::info!(
 			"Using input: {} ({})",
