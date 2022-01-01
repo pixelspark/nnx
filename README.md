@@ -29,7 +29,7 @@ run a model. Currently the following heuristics are applied:
 ## Usage
 
 ```sh
-$ nnx ./data/opt-squeeze.onnx --output-name squeezenet0_flatten0_reshape0 --labels ./data/synset.txt --input-image ./data/coffee.png
+$ nnx ./data/opt-squeeze.onnx infer --labels ./data/synset.txt --input-image ./data/coffee.png
 n03063689 coffeepot: 22.261997
 n03297495 espresso maker: 20.724543
 n02791124 barber chair: 18.916985
@@ -41,7 +41,7 @@ n03976467 Polaroid camera, Polaroid Land camera: 17.103294
 n03532672 hook, claw: 16.791483
 n03584829 iron, smoothing iron: 16.715918
 
-$ nnx ./data/opt-mnist.onnx --input-image ./data/mnist-7.png
+$ nnx ./data/opt-mnist.onnx infer --input-image ./data/mnist-7.png
 [-1.2942507, 0.5192305, 8.655695, 9.474595, -13.768464, -5.8907413, -23.467274, 28.252314, -6.7598896, 3.9513395]
 
 $ nnx ./data/opt-mnist.onnx --input-image ./data/mnist-7.png --labels ./data/mnist-labels.txt --top=1
@@ -104,7 +104,7 @@ onnx.save(inferred_model, "tymnist-inferred.onnx")
 4. Infer with NNX:
 
 ```sh
-nnx  ./tymnist-inferred.onnx -i ./data/mnist-7.png
+nnx  ./tymnist-inferred.onnx infer -i ./data/mnist-7.png --labels ./data/mnist-labels.txt
 ```
 
 5. compare inference result with what Keras would generate (`pip install numpy pillow matplotlib`):
