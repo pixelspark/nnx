@@ -44,7 +44,7 @@ n03584829 iron, smoothing iron: 16.715918
 $ nnx ./data/opt-mnist.onnx infer --input-image ./data/mnist-7.png
 [-1.2942507, 0.5192305, 8.655695, 9.474595, -13.768464, -5.8907413, -23.467274, 28.252314, -6.7598896, 3.9513395]
 
-$ nnx ./data/opt-mnist.onnx --input-image ./data/mnist-7.png --labels ./data/mnist-labels.txt --top=1
+$ nnx ./data/opt-mnist.onnx infer --input-image ./data/mnist-7.png --labels ./data/mnist-labels.txt --top=1
 Seven
 ```
 
