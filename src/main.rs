@@ -1,4 +1,5 @@
 use ndarray::ArrayBase;
+use prettytable::{cell, row, table, Table};
 use protobuf::{self, Message};
 use std::path::Path;
 use std::{
@@ -14,7 +15,22 @@ mod util;
 use util::*;
 
 #[derive(Debug, StructOpt)]
+struct InfoOptions {
+	/// Model file (.onnx)
+	#[structopt(parse(from_os_str))]
+	model: PathBuf,
+}
+
+#[derive(Debug, StructOpt)]
 struct InferOptions {
+	/// Model file (.onnx)
+	#[structopt(parse(from_os_str))]
+	model: PathBuf,
+
+	/// Input image
+	#[structopt(parse(from_os_str))]
+	input_image: Option<PathBuf>,
+
 	// Number of labels to print (default: 10)
 	#[structopt(long)]
 	top: Option<usize>,
@@ -31,10 +47,6 @@ struct InferOptions {
 	#[structopt(long)]
 	input_name: Option<String>,
 
-	/// Input image
-	#[structopt(short = "i", long, parse(from_os_str))]
-	input_image: Option<PathBuf>,
-
 	/// Path to a labels file (each line containing a single label)
 	#[structopt(short, long, parse(from_os_str))]
 	labels: Option<PathBuf>,
@@ -43,6 +55,7 @@ struct InferOptions {
 #[derive(Debug, StructOpt)]
 enum Command {
 	Infer(InferOptions),
+	Info(InfoOptions),
 }
 
 #[derive(Debug, StructOpt)]
@@ -50,10 +63,6 @@ enum Command {
 struct Opt {
 	#[structopt(subcommand)]
 	cmd: Command,
-
-	/// Model file (.onnx)
-	#[structopt(parse(from_os_str))]
-	model: PathBuf,
 }
 
 fn get_labels(path: &Path) -> Vec<String> {
@@ -66,32 +75,62 @@ async fn run() {
 	let opt = Opt::from_args();
 	let debug = log::log_enabled!(log::Level::Info);
 
-	let model_path = opt.model.into_os_string().into_string().expect("invalid path");
-	let model = ModelProto::parse_from_bytes(&std::fs::read(&model_path).expect("ONNX Model path not found.")).expect("Could not deserialize the Model");
-
-	if debug {
-		log::info!("Model version: {}", model.get_model_version());
-		log::info!("IR version: {}", model.get_ir_version());
-		log::info!("Producer name: {}", model.get_producer_name());
-		log::info!("Producer version: {}", model.get_producer_version());
-		let inputs = model.get_graph().get_input();
-		for i in inputs {
-			log::info!("Input {} {} {:?}", i.get_name(), i.get_doc_string(), i.input_dimensions());
-		}
-
-		for opset in model.get_opset_import() {
-			log::info!("Opset: {} {}", opset.get_domain(), opset.get_version());
-		}
-	}
-
-	let session = wonnx::Session::from_path(&model_path).await.expect("failed to load model");
-
-	if debug {
-		log::info!("Outputs: {}", session.outputs.iter().map(|x| x.get_name()).collect::<Vec<&str>>().join(","));
-	}
-
 	match opt.cmd {
+		Command::Info(info_opt) => {
+			// Load the model
+			let model_path = info_opt.model.into_os_string().into_string().expect("invalid path");
+			let model =
+				ModelProto::parse_from_bytes(&std::fs::read(&model_path).expect("ONNX Model path not found.")).expect("Could not deserialize the model");
+
+			let mut inputs_table = Table::new();
+			inputs_table.add_row(row![b->"Name", b->"Description", b->"Shape"]);
+			let inputs = model.get_graph().get_input();
+			for i in inputs {
+				inputs_table.add_row(row![
+					i.get_name(),
+					i.get_doc_string(),
+					i.input_dimensions().iter().map(|x| x.to_string()).collect::<Vec<String>>().join("x")
+				]);
+			}
+
+			let mut outputs_table = Table::new();
+			outputs_table.add_row(row![b->"Name", b->"Description", b->"Shape"]);
+
+			let outputs = model.get_graph().get_output();
+			for i in outputs {
+				outputs_table.add_row(row![
+					i.get_name(),
+					i.get_doc_string(),
+					i.input_dimensions().iter().map(|x| x.to_string()).collect::<Vec<String>>().join("x")
+				]);
+			}
+
+			let opset_string = model
+				.get_opset_import()
+				.iter()
+				.map(|os| format!("{} {}", os.get_version(), os.get_domain()))
+				.collect::<Vec<String>>()
+				.join(";");
+
+			let table = table![
+				[b->"Model version", model.get_model_version()],
+				[b->"IR version", model.get_ir_version()],
+				[b->"Producer name", model.get_producer_name()],
+				[b->"Producer version", model.get_producer_version()],
+				[b->"Opsets", opset_string],
+				[b->"Inputs", inputs_table],
+				[b->"Outputs", outputs_table]
+			];
+			table.printstd();
+		}
+
 		Command::Infer(infer_opt) => {
+			// Load the model
+			let model_path = infer_opt.model.into_os_string().into_string().expect("invalid path");
+			let model =
+				ModelProto::parse_from_bytes(&std::fs::read(&model_path).expect("ONNX Model path not found.")).expect("Could not deserialize the model");
+			let session = wonnx::Session::from_path(&model_path).await.expect("failed to load model");
+
 			let input_name = match infer_opt.input_name {
 				Some(input_name) => input_name,
 				None => model.get_graph().get_input()[0].get_name().to_string(),
