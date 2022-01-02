@@ -1,6 +1,6 @@
 # NNX
 
-GPU-accelerated neural network inference from the command line using [wonnx](https://github.com/haixuanTao/wonnx).
+GPU-accelerated neural network inference from the command line using [wonnx](https://github.com/haixuanTao/wonnx) and [tract](https://github.com/sonos/tract).
 
 ONNX defines a standardized format to exchange machine learning models. However, up to this point there is no easy way to
 perform one-off inference using such a model without resorting to Python. Installation of Python and the required libraries
@@ -12,7 +12,10 @@ This project provides a very simple all-in-one binary command line tool that can
 models on the GPU. Thanks to the [wonnx](https://github.com/haixuanTao/wonnx) library inference is performed on the GPU
 through [wgpu][https://wgpu.rs], which is a Rust implementation of the WebGPU standard, supported on Windows, macOS, Linux
 and (in the future) even inside the browser, without having to install specific drivers (wgpu will use Direct3D, Metal or
-Vulkan depending on the platform).
+Vulkan depending on the platform). NNX will fall back to inference on the CPU (through [tract](https://github.com/sonos/tract))
+when compiled with feature 'cpu' (selected by default). It is possible to force using the CPU backend by specifying `--backend=cpu`.
+The CPU backend is typically faster for one-shot inference and for relatively small models (the GPU backend will require
+compilation of shaders, which comes with more fixed costs).
 
 NNX tries to make educated guesses about how to transform input and output for a model. These guesses are a default - i.e.
 it should always be possible to override them. The goal is to reduce the amount of configuration required to be able to
@@ -156,3 +159,16 @@ m5 = PIL.Image.open("data/mnist-7.png").resize((28,28), PIL.Image.ANTIALIAS)
 nm5 = numpy.array(m5).reshape((1,28,28))
 model.predict(nm5)
 ```
+
+## Testing
+
+Compare output of the CPU and GPU backend as follows:
+
+```sh
+nnx infer ./data/opt-squeeze.onnx ./data/coffee.jpg --compare
+```
+
+The result code will be '0' if the results are considered equal (within tolerance) or will be '-1' if it is not. See also
+[test.sh](./test.sh).
+
+Specify `--benchmark` to perform 100 inferences, which makes for a fairer comparison between CPU and GPU backend.

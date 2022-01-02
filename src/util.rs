@@ -1,6 +1,8 @@
 use image::imageops::FilterType;
 use image::{ImageBuffer, Pixel, Rgb};
 use ndarray::{s, ArrayBase};
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 use wonnx::onnx::{TensorShapeProto, ValueInfoProto};
 pub trait ValueInfoProtoUtil {
@@ -122,4 +124,9 @@ pub fn load_image_input(input_image: &Path, input_dims: &[usize]) -> Option<Arra
 	} else {
 		None
 	}
+}
+
+pub fn get_labels(path: &Path) -> Vec<String> {
+	let file = BufReader::new(File::open(path).unwrap());
+	file.lines().map(|line| line.unwrap()).collect()
 }

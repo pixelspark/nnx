@@ -1,76 +1,22 @@
+use async_trait::async_trait;
 use ndarray::ArrayBase;
 use prettytable::{cell, row, table, Table};
 use protobuf::{self, Message};
-use std::path::Path;
-use std::{
-	collections::HashMap,
-	fs,
-	io::{BufRead, BufReader},
-	path::PathBuf,
-};
+use std::collections::HashMap;
+use std::time::Instant;
 use structopt::StructOpt;
+
 use wonnx::onnx::ModelProto;
+
+mod gpu;
 
 mod util;
 use util::*;
 
-#[derive(Debug, StructOpt)]
-struct InfoOptions {
-	/// Model file (.onnx)
-	#[structopt(parse(from_os_str))]
-	model: PathBuf,
-}
+mod types;
+use types::*;
 
-#[derive(Debug, StructOpt)]
-struct InferOptions {
-	/// Model file (.onnx)
-	#[structopt(parse(from_os_str))]
-	model: PathBuf,
-
-	/// Input image
-	#[structopt(parse(from_os_str))]
-	input_image: Option<PathBuf>,
-
-	// Number of labels to print (default: 10)
-	#[structopt(long)]
-	top: Option<usize>,
-
-	/// Whether to print probabilities
-	#[structopt(long)]
-	probabilities: bool,
-
-	/// Node to take output from (defaults to the first output when not specified)
-	#[structopt(long)]
-	output_name: Option<String>,
-
-	/// Node to feed input to (defaults to the first input when not specified)
-	#[structopt(long)]
-	input_name: Option<String>,
-
-	/// Path to a labels file (each line containing a single label)
-	#[structopt(short, long, parse(from_os_str))]
-	labels: Option<PathBuf>,
-}
-
-#[derive(Debug, StructOpt)]
-enum Command {
-	Infer(InferOptions),
-	Info(InfoOptions),
-}
-
-#[derive(Debug, StructOpt)]
-#[structopt(name = "nnx", about = "GPU-accelerated ONNX inference from the command line")]
-struct Opt {
-	#[structopt(subcommand)]
-	cmd: Command,
-}
-
-fn get_labels(path: &Path) -> Vec<String> {
-	let file = BufReader::new(fs::File::open(path).unwrap());
-	file.lines().map(|line| line.unwrap()).collect()
-}
-
-async fn run() {
+async fn run() -> Result<(), NNXError> {
 	env_logger::init();
 	let opt = Opt::from_args();
 	let debug = log::log_enabled!(log::Level::Info);
@@ -122,17 +68,17 @@ async fn run() {
 				[b->"Outputs", outputs_table]
 			];
 			table.printstd();
+			Ok(())
 		}
 
 		Command::Infer(infer_opt) => {
 			// Load the model
-			let model_path = infer_opt.model.into_os_string().into_string().expect("invalid path");
+			let model_path = infer_opt.model.clone().into_os_string().into_string().expect("invalid path");
 			let model =
 				ModelProto::parse_from_bytes(&std::fs::read(&model_path).expect("ONNX Model path not found.")).expect("Could not deserialize the model");
-			let session = wonnx::Session::from_path(&model_path).await.expect("failed to load model");
 
-			let input_name = match infer_opt.input_name {
-				Some(input_name) => input_name,
+			let input_name = match &infer_opt.input_name {
+				Some(input_name) => input_name.clone(),
 				None => model.get_graph().get_input()[0].get_name().to_string(),
 			};
 
@@ -151,24 +97,110 @@ async fn run() {
 				);
 			}
 
-			let mut inputs: HashMap<String, ArrayBase<_, ndarray::IxDyn>> = HashMap::new();
+			let mut inputs: HashMap<String, Tensor> = HashMap::new();
+			let mut input_shapes = HashMap::new();
 
-			let data: Option<ArrayBase<_, ndarray::IxDyn>> = if let Some(input_image) = infer_opt.input_image {
-				load_image_input(&input_image, &input_dims)
+			let data: Option<ArrayBase<_, ndarray::IxDyn>> = if let Some(input_image) = &infer_opt.input_image {
+				load_image_input(input_image, &input_dims)
 			} else {
 				None
 			};
 
 			if let Some(d) = data {
-				inputs.insert(input_name, d);
+				inputs.insert(
+					input_name.clone(),
+					Tensor {
+						data: d,
+						shape: input_dims.clone(),
+					},
+				);
+				input_shapes.insert(input_name, input_dims);
 			}
 
-			let input_refs = inputs.iter().map(|(k, v)| (k.clone(), v.as_slice().unwrap())).collect();
-			let result = session.run(input_refs).await.expect("run failed");
+			#[cfg(feature = "cpu")]
+			if infer_opt.compare {
+				let gpu_backend = Backend::Gpu.for_model(&model_path, &model, &input_shapes).await?;
+				let gpu_start = Instant::now();
+				if infer_opt.benchmark {
+					for _ in 0..100 {
+						let _ = gpu_backend.infer(&infer_opt, &inputs, &model).await?;
+					}
+				}
+				let gpu_output = gpu_backend.infer(&infer_opt, &inputs, &model).await?;
+				let gpu_time = gpu_start.elapsed();
+				log::info!("gpu time: {}ms", gpu_time.as_millis());
+				drop(gpu_backend);
 
-			let output = match infer_opt.output_name {
-				Some(output_name) => &result[&output_name],
-				None => result.values().next().unwrap(),
+				let cpu_backend = Backend::Cpu.for_model(&model_path, &model, &input_shapes).await?;
+				let cpu_start = Instant::now();
+				if infer_opt.benchmark {
+					for _ in 0..100 {
+						let _ = cpu_backend.infer(&infer_opt, &inputs, &model).await?;
+					}
+				}
+				let cpu_output = cpu_backend.infer(&infer_opt, &inputs, &model).await?;
+				let cpu_time = cpu_start.elapsed();
+				log::info!(
+					"cpu time: {}ms ({:.2}x gpu time)",
+					cpu_time.as_millis(),
+					cpu_time.as_secs_f64() / gpu_time.as_secs_f64()
+				);
+				if gpu_output.len() != cpu_output.len() {
+					return Err(NNXError::Comparison(format!(
+						"length of GPU result ({}) mismatches CPU result ({})",
+						gpu_output.len(),
+						cpu_output.len()
+					)));
+				}
+
+				for i in 0..gpu_output.len() {
+					let diff = (gpu_output[i] - cpu_output[i]).abs();
+					if diff > 0.00001 {
+						return Err(NNXError::Comparison(format!(
+							"output element {} differs too much: GPU says {} vs CPU says {} (difference is {})",
+							i, gpu_output[i], cpu_output[i], diff
+						)));
+					}
+				}
+				if infer_opt.benchmark {
+					println!(
+						"OK (gpu={}ms, cpu={}ms, {:.2}x)",
+						gpu_time.as_millis(),
+						cpu_time.as_millis(),
+						cpu_time.as_secs_f64() / gpu_time.as_secs_f64()
+					);
+				} else {
+					println!("OK")
+				}
+				return Ok(());
+			}
+
+			let backend = infer_opt.backend.for_model(&model_path, &model, &input_shapes).await?;
+
+			let output = match backend.infer(&infer_opt, &inputs, &model).await {
+				Ok(x) => x,
+				Err(e) => {
+					#[cfg(feature = "cpu")]
+					if infer_opt.fallback {
+						match infer_opt.backend.fallback() {
+							Some(fallback_backend) => {
+								log::info!(
+									"inference with backend {:?} failed, trying alternative {:?}",
+									infer_opt.backend,
+									fallback_backend
+								);
+								let fallback_inferer = fallback_backend.for_model(&model_path, &model, &input_shapes).await?;
+								fallback_inferer.infer(&infer_opt, &inputs, &model).await?
+							}
+							None => return Err(e),
+						}
+					} else {
+						return Err(e);
+					}
+
+					#[cfg(not(feature = "cpu"))]
+					return Err(e);
+				}
 			};
 
 			// Look up label
@@ -192,10 +224,46 @@ async fn run() {
 					println!("{:?}", output);
 				}
 			}
+
+			Ok(())
 		}
 	}
 }
 
-fn main() {
-	pollster::block_on(run());
+#[async_trait]
+trait Inferer {
+	async fn infer(&self, infer_opt: &InferOptions, inputs: &HashMap<String, Tensor>, model: &ModelProto) -> Result<Vec<f32>, NNXError>;
+}
+
+#[cfg(feature = "cpu")]
+mod cpu;
+
+impl Backend {
+	#[cfg(feature = "cpu")]
+	fn fallback(&self) -> Option<Backend> {
+		match self {
+			#[cfg(feature = "cpu")]
+			Backend::Cpu => None,
+
+			Backend::Gpu => {
+				#[cfg(feature = "cpu")]
+				return Some(Backend::Cpu);
+
+				#[cfg(not(feature = "cpu"))]
+				return None;
+			}
+		}
+	}
+
+	async fn for_model(&self, model_path: &str, model: &ModelProto, input_shapes: &HashMap<String, Vec<usize>>) -> Result<Box<dyn Inferer>, NNXError> {
+		Ok(match self {
+			Backend::Gpu => Box::new(gpu::GPUInferer::new(model_path).await?),
+			#[cfg(feature = "cpu")]
+			Backend::Cpu => Box::new(cpu::CPUInferer::new(model_path, model, input_shapes).await?),
+		})
+	}
+}
+
+fn main() -> Result<(), NNXError> {
+	pollster::block_on(run())
 }
