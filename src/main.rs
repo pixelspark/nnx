@@ -180,16 +180,20 @@ async fn run() -> Result<(), NNXError> {
 				return Ok(());
 			}
 
-			let backend = infer_opt.backend.for_model(&model_path, &input_shapes).await?;
+			let first_result = async {
+				let backend = infer_opt.backend.for_model(&model_path, &input_shapes).await?;
+				backend.infer(&infer_opt, &inputs, &model).await
+			};
 
-			let output = match backend.infer(&infer_opt, &inputs, &model).await {
+			let output = match first_result.await {
 				Ok(x) => x,
 				Err(e) => {
 					#[cfg(feature = "cpu")]
 					if infer_opt.fallback {
 						match infer_opt.backend.fallback() {
 							Some(fallback_backend) => {
-								log::warn!("inference with {:?} backend failed, trying {:?} backend", infer_opt.backend, fallback_backend);
+								log::warn!("inference with {:?} backend failed: {}", infer_opt.backend, e,);
+								log::warn!("trying {:?} backend instead", fallback_backend);
 								let fallback_inferer = fallback_backend.for_model(&model_path, &input_shapes).await?;
 								fallback_inferer.infer(&infer_opt, &inputs, &model).await?
 							}

@@ -2,6 +2,7 @@ use ndarray::ArrayBase;
 use std::{path::PathBuf, str::FromStr};
 use structopt::StructOpt;
 use thiserror::Error;
+use wonnx::{SessionError, WonnxError};
 
 #[cfg(feature = "cpu")]
 use tract_onnx::prelude::*;
@@ -36,12 +37,15 @@ pub enum NNXError {
 	#[error("output not found")]
 	OutputNotFound(String),
 
-	#[error("backend error")]
-	Backend(#[from] Box<dyn std::error::Error>),
+	#[error("backend error: {0}")]
+	BackendFailed(#[from] WonnxError),
+
+	#[error("backend execution error: {0}")]
+	BackendExecutionFailed(#[from] SessionError),
 
 	#[cfg(feature = "cpu")]
-	#[error("cpu backend error")]
-	CPUBackend(#[from] TractError),
+	#[error("cpu backend error: {0}")]
+	CPUBackendFailed(#[from] TractError),
 
 	#[cfg(feature = "cpu")]
 	#[error("comparison failed")]
