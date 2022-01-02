@@ -30,6 +30,12 @@ pub enum NNXError {
 	#[error("invalid backend selected")]
 	InvalidBackend(String),
 
+	#[error("input shape is invalid")]
+	InvalidInputShape,
+
+	#[error("output not found")]
+	OutputNotFound(String),
+
 	#[error("backend error")]
 	Backend(#[from] Box<dyn std::error::Error>),
 

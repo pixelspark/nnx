@@ -107,19 +107,24 @@ async fn run() -> Result<(), NNXError> {
 			};
 
 			if let Some(d) = data {
-				inputs.insert(
-					input_name.clone(),
-					Tensor {
-						data: d,
-						shape: input_dims.clone(),
-					},
-				);
-				input_shapes.insert(input_name, input_dims);
+				let mut shape = input_dims.clone();
+				if shape.is_empty() {
+					return Err(NNXError::InvalidInputShape);
+				}
+
+				// Some models allow us to set the number of items we are throwing at them.
+				if shape[0] == 0 {
+					shape[0] = 1;
+					log::info!("changing first dimension for input {} to {:?}", input_name, shape);
+				}
+
+				inputs.insert(input_name.clone(), Tensor { data: d, shape: shape.clone() });
+				input_shapes.insert(input_name, shape);
 			}
 
 			#[cfg(feature = "cpu")]
 			if infer_opt.compare {
-				let gpu_backend = Backend::Gpu.for_model(&model_path, &model, &input_shapes).await?;
+				let gpu_backend = Backend::Gpu.for_model(&model_path, &input_shapes).await?;
 				let gpu_start = Instant::now();
 				if infer_opt.benchmark {
 					for _ in 0..100 {
@@ -131,7 +136,7 @@ async fn run() -> Result<(), NNXError> {
 				log::info!("gpu time: {}ms", gpu_time.as_millis());
 				drop(gpu_backend);
 
-				let cpu_backend = Backend::Cpu.for_model(&model_path, &model, &input_shapes).await?;
+				let cpu_backend = Backend::Cpu.for_model(&model_path, &input_shapes).await?;
 				let cpu_start = Instant::now();
 				if infer_opt.benchmark {
 					for _ in 0..100 {
@@ -175,7 +180,7 @@ async fn run() -> Result<(), NNXError> {
 				return Ok(());
 			}
 
-			let backend = infer_opt.backend.for_model(&model_path, &model, &input_shapes).await?;
+			let backend = infer_opt.backend.for_model(&model_path, &input_shapes).await?;
 
 			let output = match backend.infer(&infer_opt, &inputs, &model).await {
 				Ok(x) => x,
@@ -184,12 +189,8 @@ async fn run() -> Result<(), NNXError> {
 					if infer_opt.fallback {
 						match infer_opt.backend.fallback() {
 							Some(fallback_backend) => {
-								log::info!(
-									"inference with backend {:?} failed, trying alternative {:?}",
-									infer_opt.backend,
-									fallback_backend
-								);
-								let fallback_inferer = fallback_backend.for_model(&model_path, &model, &input_shapes).await?;
+								log::warn!("inference with {:?} backend failed, trying {:?} backend", infer_opt.backend, fallback_backend);
+								let fallback_inferer = fallback_backend.for_model(&model_path, &input_shapes).await?;
 								fallback_inferer.infer(&infer_opt, &inputs, &model).await?
 							}
 							None => return Err(e),
@@ -255,11 +256,11 @@ impl Backend {
 		}
 	}
 
-	async fn for_model(&self, model_path: &str, model: &ModelProto, input_shapes: &HashMap<String, Vec<usize>>) -> Result<Box<dyn Inferer>, NNXError> {
+	async fn for_model(&self, model_path: &str, input_shapes: &HashMap<String, Vec<usize>>) -> Result<Box<dyn Inferer>, NNXError> {
 		Ok(match self {
 			Backend::Gpu => Box::new(gpu::GPUInferer::new(model_path).await?),
 			#[cfg(feature = "cpu")]
-			Backend::Cpu => Box::new(cpu::CPUInferer::new(model_path, model, input_shapes).await?),
+			Backend::Cpu => Box::new(cpu::CPUInferer::new(model_path, input_shapes).await?),
 		})
 	}
 }

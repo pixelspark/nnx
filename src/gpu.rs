@@ -25,7 +25,10 @@ impl Inferer for GPUInferer {
 		let mut result = self.session.run(input_refs).await.expect("run failed");
 
 		let result = match &infer_opt.output_name {
-			Some(output_name) => result.remove(output_name).unwrap(),
+			Some(output_name) => match result.remove(output_name) {
+				Some(out) => out,
+				None => return Err(NNXError::OutputNotFound(output_name.to_string())),
+			},
 			None => result.values().next().unwrap().clone(),
 		};
 
