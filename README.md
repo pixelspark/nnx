@@ -32,7 +32,7 @@ run a model. Currently the following heuristics are applied:
 ## Usage
 
 ```sh
-$ nnx infer ./data/opt-squeeze.onnx ./data/coffee.png --labels ./data/synset.txt
+$ nnx infer ./data/squeezenet.onnx ./data/coffee.png --labels ./data/squeezenet-labels.txt
 n03063689 coffeepot: 22.261997
 n03297495 espresso maker: 20.724543
 n02791124 barber chair: 18.916985
@@ -44,13 +44,13 @@ n03976467 Polaroid camera, Polaroid Land camera: 17.103294
 n03532672 hook, claw: 16.791483
 n03584829 iron, smoothing iron: 16.715918
 
-$ nnx infer ./data/opt-mnist.onnx ./data/mnist-7.png
+$ nnx infer ./data/mnist.onnx ./data/mnist-7.png
 [-1.2942507, 0.5192305, 8.655695, 9.474595, -13.768464, -5.8907413, -23.467274, 28.252314, -6.7598896, 3.9513395]
 
-$ nnx infer ./data/opt-mnist.onnx ./data/mnist-7.png --labels ./data/mnist-labels.txt --top=1
+$ nnx infer ./data/mnist.onnx ./data/mnist-7.png --labels ./data/mnist-labels.txt --top=1
 Seven
 
-$ nnx info ./data/opt-mnist.onnx
+$ nnx info ./data/mnist.onnx
 +------------------+------------------------------------------------------------------+
 | Model version    | 1                                                                |
 +------------------+------------------------------------------------------------------+
@@ -165,7 +165,7 @@ model.predict(nm5)
 Compare output of the CPU and GPU backend as follows:
 
 ```sh
-nnx infer ./data/opt-squeeze.onnx ./data/coffee.jpg --compare
+nnx infer ./data/squeezenet.onnx ./data/coffee.jpg --compare
 ```
 
 The result code will be '0' if the results are considered equal (within tolerance) or will be '-1' if it is not. See also
