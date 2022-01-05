@@ -8,15 +8,17 @@ cpu = ["tract-onnx"]
 default = ["cpu"]
 
 [dependencies]
-structopt = { version = "0.3", features = [ "paw" ] }
+structopt = { version = "0.3.25", features = [ "paw" ] }
 pollster = "0.2.4"
-protobuf = { version = "2", features = ["with-bytes"] }
+protobuf = { version = "2.25.2", features = ["with-bytes"] }
 wonnx = { git = "https://github.com/pixelspark/wonnx.git" }
+#wonnx = { git = "https://github.com/haixuanTao/wonnx.git" }
+#wonnx = { path = "../../Repos/wonnx" }
 image = "0.23.14"
 ndarray = "0.15.4"
-log = "0.4.14" 
+log = "0.4.14"
 env_logger = "0.9.0"
-prettytable-rs = "^0.8"
-tract-onnx = { version = "^0.15.0", optional = true }
-thiserror = "^1.0.0"
-async-trait = "^0.1.52"
+prettytable-rs = "0.8.0"
+tract-onnx = { version = "0.15.8", optional = true }
+thiserror = "1.0.30"
+async-trait = "0.1.52"
