@@ -16,7 +16,7 @@ mod types;
 use types::*;
 
 mod info;
-use info::info_table;
+use info::{info_table, print_graph};
 
 async fn run() -> Result<(), NNXError> {
 	env_logger::init();
@@ -31,6 +31,15 @@ async fn run() -> Result<(), NNXError> {
 				ModelProto::parse_from_bytes(&std::fs::read(&model_path).expect("ONNX Model path not found.")).expect("Could not deserialize the model");
 			let table = info_table(&model);
 			table.printstd();
+			Ok(())
+		}
+
+		Command::Graph(info_opt) => {
+			// Load the model
+			let model_path = info_opt.model.into_os_string().into_string().expect("invalid path");
+			let model =
+				ModelProto::parse_from_bytes(&std::fs::read(&model_path).expect("ONNX Model path not found.")).expect("Could not deserialize the model");
+			print_graph(&model);
 			Ok(())
 		}
 

@@ -1,9 +1,48 @@
 use std::collections::{HashMap, HashSet};
 
 use prettytable::{cell, row, table, Table};
-use wonnx::onnx::ModelProto;
+use wonnx::onnx::{ModelProto, NodeProto};
 
 use crate::util::ValueInfoProtoUtil;
+
+fn node_identifier(index: usize, node: &NodeProto) -> String {
+	format!("\"{} {}\"", index, node.get_op_type())
+}
+
+pub fn print_graph(model: &ModelProto) {
+	println!("strict digraph {{");
+	let graph = model.get_graph();
+
+	let mut outputs: HashMap<String, String> = HashMap::new();
+	for (index, node) in graph.get_node().iter().enumerate() {
+		for output in node.get_output() {
+			outputs.insert(output.clone(), node_identifier(index, node));
+		}
+	}
+
+	// Special values
+	let model_inputs: HashSet<&str> = graph.get_input().iter().map(|v| v.get_name()).collect();
+	let initializers: HashSet<&str> = graph.get_initializer().iter().map(|x| x.get_name()).collect();
+
+	for (index, node) in graph.get_node().iter().enumerate() {
+		for input in node.get_input() {
+			if initializers.contains(input.as_str()) {
+				continue;
+			}
+			
+			if model_inputs.contains(input.as_str()) {
+				println!("\t\"Input {}\" --> {}", input, node_identifier(index, node));
+			}
+			// Find input node
+			else if let Some(out_from_node) = outputs.get(input) {
+				println!("\t{} -> {}", out_from_node, node_identifier(index, node));
+			} else {
+				println!("\t\"Unknown: {}\" -> {}", input, node_identifier(index, node));
+			}
+		}
+	}
+	println!("}}");
+}
 
 pub fn info_table(model: &ModelProto) -> Table {
 	let mut inputs_table = Table::new();

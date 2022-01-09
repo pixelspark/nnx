@@ -118,6 +118,7 @@ pub struct InferOptions {
 pub enum Command {
 	Infer(InferOptions),
 	Info(InfoOptions),
+	Graph(InfoOptions),
 }
 
 #[derive(Debug, StructOpt)]
