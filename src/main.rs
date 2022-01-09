@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use ndarray::ArrayBase;
-use prettytable::{cell, row, table, Table};
 use protobuf::{self, Message};
 use std::collections::HashMap;
 use std::time::Instant;
@@ -16,6 +15,9 @@ use util::*;
 mod types;
 use types::*;
 
+mod info;
+use info::info_table;
+
 async fn run() -> Result<(), NNXError> {
 	env_logger::init();
 	let opt = Opt::from_args();
@@ -27,46 +29,7 @@ async fn run() -> Result<(), NNXError> {
 			let model_path = info_opt.model.into_os_string().into_string().expect("invalid path");
 			let model =
 				ModelProto::parse_from_bytes(&std::fs::read(&model_path).expect("ONNX Model path not found.")).expect("Could not deserialize the model");
-
-			let mut inputs_table = Table::new();
-			inputs_table.add_row(row![b->"Name", b->"Description", b->"Shape"]);
-			let inputs = model.get_graph().get_input();
-			for i in inputs {
-				inputs_table.add_row(row![
-					i.get_name(),
-					i.get_doc_string(),
-					i.input_dimensions().iter().map(|x| x.to_string()).collect::<Vec<String>>().join("x")
-				]);
-			}
-
-			let mut outputs_table = Table::new();
-			outputs_table.add_row(row![b->"Name", b->"Description", b->"Shape"]);
-
-			let outputs = model.get_graph().get_output();
-			for i in outputs {
-				outputs_table.add_row(row![
-					i.get_name(),
-					i.get_doc_string(),
-					i.input_dimensions().iter().map(|x| x.to_string()).collect::<Vec<String>>().join("x")
-				]);
-			}
-
-			let opset_string = model
-				.get_opset_import()
-				.iter()
-				.map(|os| format!("{} {}", os.get_version(), os.get_domain()))
-				.collect::<Vec<String>>()
-				.join(";");
-
-			let table = table![
-				[b->"Model version", model.get_model_version()],
-				[b->"IR version", model.get_ir_version()],
-				[b->"Producer name", model.get_producer_name()],
-				[b->"Producer version", model.get_producer_version()],
-				[b->"Opsets", opset_string],
-				[b->"Inputs", inputs_table],
-				[b->"Outputs", outputs_table]
-			];
+			let table = info_table(&model);
 			table.printstd();
 			Ok(())
 		}
