@@ -66,6 +66,7 @@ fn load_bw_image(image_path: &Path, width: usize, height: usize) -> ndarray::Arr
 
 // Loads an image as (1, w, h, 3)
 fn load_rgb_image(image_path: &Path, width: usize, height: usize) -> ndarray::ArrayBase<ndarray::OwnedRepr<f32>, ndarray::Dim<[usize; 4]>> {
+	log::info!("load_rgb_image {:?} {}x{}", image_path, width, height);
 	let image_buffer: ImageBuffer<Rgb<u8>, Vec<u8>> = image::open(image_path)
 		.unwrap()
 		.resize_to_fill(width as u32, height as u32, FilterType::Nearest)
@@ -100,24 +101,42 @@ fn load_rgb_image(image_path: &Path, width: usize, height: usize) -> ndarray::Ar
 	array
 }
 
-pub fn load_image_input(input_image: &Path, input_dims: &[usize]) -> Option<ArrayBase<ndarray::OwnedRepr<f32>, ndarray::IxDyn>> {
-	if input_dims.len() == 3 {
-		if input_dims[0] == 3 {
+pub fn load_image_input(input_image: &Path, input_shape: &[usize]) -> Option<ArrayBase<ndarray::OwnedRepr<f32>, ndarray::IxDyn>> {
+	if input_shape.len() == 3 {
+		let mut w = input_shape[1];
+		let mut h = input_shape[2];
+		if w == 0 {
+			w = 224;
+		}
+		if h == 0 {
+			h = 224;
+		}
+
+		if input_shape[0] == 3 {
 			log::info!("input is (3,?,?), loading as RGB image");
-			Some(load_rgb_image(input_image, input_dims[1], input_dims[2]).into_dyn())
-		} else if input_dims[0] == 1 {
+			Some(load_rgb_image(input_image, w, h).into_dyn())
+		} else if input_shape[0] == 1 {
 			log::info!("input is (1,?,?), loading as BW image");
-			Some(load_bw_image(input_image, input_dims[1], input_dims[2]).into_dyn())
+			Some(load_bw_image(input_image, w, h).into_dyn())
 		} else {
 			None
 		}
-	} else if input_dims.len() == 4 {
-		if input_dims[1] == 3 {
+	} else if input_shape.len() == 4 {
+		let mut w = input_shape[2];
+		let mut h = input_shape[3];
+		if w == 0 {
+			w = 224;
+		}
+		if h == 0 {
+			h = 224;
+		}
+
+		if input_shape[1] == 3 {
 			log::info!("input is (?,3,?,?), loading as RGB image");
-			Some(load_rgb_image(input_image, input_dims[2], input_dims[3]).into_dyn())
-		} else if input_dims[1] == 1 {
+			Some(load_rgb_image(input_image, w, h).into_dyn())
+		} else if input_shape[1] == 1 {
 			log::info!("input is (?,1,?,?), loading as BW image");
-			Some(load_bw_image(input_image, input_dims[2], input_dims[3]).into_dyn())
+			Some(load_bw_image(input_image, w, h).into_dyn())
 		} else {
 			None
 		}

@@ -88,12 +88,12 @@ async fn run() -> Result<(), NNXError> {
 				.iter()
 				.find(|x| x.get_name() == input_name)
 				.expect("input not found");
-			let input_dims = input_info.input_dimensions();
+			let input_shape = input_info.input_dimensions();
 			if debug {
 				log::info!(
 					"Using input: {} ({})",
 					input_name,
-					input_dims.iter().map(|x| x.to_string()).collect::<Vec<_>>().join("x")
+					input_shape.iter().map(|x| x.to_string()).collect::<Vec<_>>().join("x")
 				);
 			}
 
@@ -101,13 +101,13 @@ async fn run() -> Result<(), NNXError> {
 			let mut input_shapes = HashMap::new();
 
 			let data: Option<ArrayBase<_, ndarray::IxDyn>> = if let Some(input_image) = &infer_opt.input_image {
-				load_image_input(input_image, &input_dims)
+				load_image_input(input_image, &input_shape)
 			} else {
 				None
 			};
 
 			if let Some(d) = data {
-				let mut shape = input_dims.clone();
+				let mut shape = input_shape.clone();
 				if shape.is_empty() {
 					return Err(NNXError::InvalidInputShape);
 				}
