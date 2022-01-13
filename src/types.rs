@@ -116,8 +116,13 @@ pub struct InferOptions {
 
 #[derive(Debug, StructOpt)]
 pub enum Command {
+	/// Perform inference using a model and inputs
 	Infer(InferOptions),
+
+	/// Show information about a model, such as its inputs, outputs and the ops it uses
 	Info(InfoOptions),
+
+	/// Return a GraphViz direct graph of the nodes in the model
 	Graph(InfoOptions),
 }
 
