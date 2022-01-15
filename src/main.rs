@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use ndarray::{Array, ArrayBase};
+use ndarray::Array;
 use protobuf::{self, Message};
 use std::time::Instant;
 use std::{collections::HashMap, path::Path};
@@ -22,7 +22,6 @@ use info::{info_table, print_graph};
 async fn run() -> Result<(), NNXError> {
 	env_logger::init();
 	let opt = Opt::from_args();
-	let debug = log::log_enabled!(log::Level::Info);
 
 	match opt.cmd {
 		Command::Info(info_opt) => {
@@ -50,19 +49,9 @@ async fn run() -> Result<(), NNXError> {
 			let model =
 				ModelProto::parse_from_bytes(&std::fs::read(&model_path).expect("ONNX Model path not found.")).expect("Could not deserialize the model");
 
-			let input_name = match &infer_opt.input_name {
-				Some(input_name) => input_name.clone(),
-				None => model.get_graph().get_input()[0].get_name().to_string(),
-			};
-
-			let input_shape = model.get_input_shape(&input_name).ok_or_else(|| NNXError::InputNotFound(input_name.clone()))?;
-
-			if debug {
-				log::info!("Using input: {} ({})", input_name, input_shape);
-			}
-
 			let mut inputs: HashMap<String, Tensor> = HashMap::new();
 
+			// Process text inputs
 			if !infer_opt.text.is_empty() || !infer_opt.text_mask.is_empty() {
 				let tok = text::BertTokenizer::new(Path::new("./data/bertsquad-vocab.txt"));
 
@@ -87,7 +76,7 @@ async fn run() -> Result<(), NNXError> {
 				}
 			}
 
-			// Raw input
+			// Process raw inputs
 			for (raw_input_name, text) in &infer_opt.raw {
 				let raw_input_shape = model
 					.get_input_shape(raw_input_name)
@@ -97,7 +86,7 @@ async fn run() -> Result<(), NNXError> {
 				let mut values = values.map_err(|x| NNXError::TokenizationFailed(x.into()))?;
 				values.resize(raw_input_shape.element_count() as usize, 0.0);
 				inputs.insert(
-					input_name.clone(),
+					raw_input_name.clone(),
 					Tensor {
 						data: Array::from_vec(values).into_dyn(),
 						shape: raw_input_shape.clone(),
@@ -106,25 +95,18 @@ async fn run() -> Result<(), NNXError> {
 			}
 
 			// Load input image if it was supplied
-			let data: Option<ArrayBase<_, ndarray::IxDyn>> = if let Some(input_image) = &infer_opt.input_image {
-				load_image_input(input_image, &input_shape)
-			} else {
-				None
-			};
+			for (input_name, image_path) in &infer_opt.input_images {
+				let mut input_shape = model.get_input_shape(input_name).ok_or_else(|| NNXError::InputNotFound(input_name.clone()))?;
 
-			if let Some(d) = data {
-				let mut shape = input_shape.clone();
-				if shape.is_empty() {
-					return Err(NNXError::InvalidInputShape);
-				}
+				let data = load_image_input(image_path, &input_shape)?;
 
 				// Some models allow us to set the number of items we are throwing at them.
-				if shape.dim(0) == 0 {
-					shape.dims[0] = 1;
-					log::info!("changing first dimension for input {} to {:?}", input_name, shape);
+				if input_shape.dim(0) == 0 {
+					input_shape.dims[0] = 1;
+					log::info!("changing first dimension for input {} to {:?}", input_name, input_shape);
 				}
 
-				inputs.insert(input_name.clone(), Tensor { data: d, shape: shape.clone() });
+				inputs.insert(input_name.clone(), Tensor { data, shape: input_shape });
 			}
 
 			// Collect input shape data

@@ -146,7 +146,7 @@ onnx.save(inferred_model, "tymnist-inferred.onnx")
 4. Infer with NNX:
 
 ```sh
-nnx  ./tymnist-inferred.onnx infer -i ./data/mnist-7.png --labels ./data/mnist-labels.txt
+nnx  ./tymnist-inferred.onnx infer -i input=./data/mnist-7.png --labels ./data/mnist-labels.txt
 ```
 
 5. compare inference result with what Keras would generate (`pip install numpy pillow matplotlib`):
@@ -165,7 +165,7 @@ model.predict(nm5)
 Compare output of the CPU and GPU backend as follows:
 
 ```sh
-nnx infer ./data/squeezenet.onnx ./data/coffee.jpg --compare
+nnx infer ./data/squeezenet.onnx -i data=./data/coffee.jpg --compare
 ```
 
 The result code will be '0' if the results are considered equal (within tolerance) or will be '-1' if it is not. See also

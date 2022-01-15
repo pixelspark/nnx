@@ -7,6 +7,8 @@ use std::path::Path;
 use wonnx::utils::Shape;
 
 use wonnx::onnx::{ModelProto, TensorShapeProto, ValueInfoProto};
+
+use crate::types::NNXError;
 pub trait ValueInfoProtoUtil {
 	fn input_dimensions(&self) -> Vec<usize>;
 }
@@ -114,7 +116,7 @@ fn load_rgb_image(image_path: &Path, width: usize, height: usize) -> ndarray::Ar
 	array
 }
 
-pub fn load_image_input(input_image: &Path, input_shape: &Shape) -> Option<ArrayBase<ndarray::OwnedRepr<f32>, ndarray::IxDyn>> {
+pub fn load_image_input(input_image: &Path, input_shape: &Shape) -> Result<ArrayBase<ndarray::OwnedRepr<f32>, ndarray::IxDyn>, NNXError> {
 	if input_shape.rank() == 3 {
 		let mut w = input_shape.dim(1) as usize;
 		let mut h = input_shape.dim(2) as usize;
@@ -127,12 +129,12 @@ pub fn load_image_input(input_image: &Path, input_shape: &Shape) -> Option<Array
 
 		if input_shape.dim(0) == 3 {
 			log::info!("input is (3,?,?), loading as RGB image");
-			Some(load_rgb_image(input_image, w, h).into_dyn())
+			Ok(load_rgb_image(input_image, w, h).into_dyn())
 		} else if input_shape.dim(0) == 1 {
 			log::info!("input is (1,?,?), loading as BW image");
-			Some(load_bw_image(input_image, w, h).into_dyn())
+			Ok(load_bw_image(input_image, w, h).into_dyn())
 		} else {
-			None
+			Err(NNXError::InvalidInputShape)
 		}
 	} else if input_shape.rank() == 4 {
 		let mut w = input_shape.dim(2) as usize;
@@ -146,15 +148,15 @@ pub fn load_image_input(input_image: &Path, input_shape: &Shape) -> Option<Array
 
 		if input_shape.dim(1) == 3 {
 			log::info!("input is (?,3,?,?), loading as RGB image");
-			Some(load_rgb_image(input_image, w, h).into_dyn())
+			Ok(load_rgb_image(input_image, w, h).into_dyn())
 		} else if input_shape.dim(1) == 1 {
 			log::info!("input is (?,1,?,?), loading as BW image");
-			Some(load_bw_image(input_image, w, h).into_dyn())
+			Ok(load_bw_image(input_image, w, h).into_dyn())
 		} else {
-			None
+			Err(NNXError::InvalidInputShape)
 		}
 	} else {
-		None
+		Err(NNXError::InvalidInputShape)
 	}
 }
 

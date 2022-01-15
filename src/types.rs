@@ -93,8 +93,8 @@ pub struct InferOptions {
 	pub backend: Backend,
 
 	/// Input image
-	#[structopt(parse(from_os_str))]
-	pub input_image: Option<PathBuf>,
+	#[structopt(short = "i", parse(try_from_str = parse_key_val), number_of_values = 1)]
+	pub input_images: Vec<(String, PathBuf)>,
 
 	// Number of labels to print (default: 10)
 	#[structopt(long)]
@@ -107,10 +107,6 @@ pub struct InferOptions {
 	/// Node to take output from (defaults to the first output when not specified)
 	#[structopt(long)]
 	pub output_name: Option<String>,
-
-	/// Node to feed input to (defaults to the first input when not specified)
-	#[structopt(long)]
-	pub input_name: Option<String>,
 
 	/// Set an input to tokenized text (-t input_name="some text")
 	#[structopt(short = "t", parse(try_from_str = parse_key_val), number_of_values = 1)]
