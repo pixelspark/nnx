@@ -4,7 +4,9 @@ use ndarray::{s, ArrayBase};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-use wonnx::onnx::{TensorShapeProto, ValueInfoProto};
+use wonnx::utils::Shape;
+
+use wonnx::onnx::{ModelProto, TensorShapeProto, ValueInfoProto};
 pub trait ValueInfoProtoUtil {
 	fn input_dimensions(&self) -> Vec<usize>;
 }
@@ -37,6 +39,17 @@ impl TensorShapeProtoUtil for TensorShapeProto {
 				_ => 0,
 			})
 			.collect()
+	}
+}
+
+pub trait ModelProtoUtil {
+	fn get_input_shape(&self, input_name: &str) -> Option<Shape>;
+}
+
+impl ModelProtoUtil for ModelProto {
+	fn get_input_shape(&self, input_name: &str) -> Option<Shape> {
+		let value_info = self.get_graph().get_input().iter().find(|x| x.get_name() == input_name);
+		value_info.map(|vi| vi.get_shape())
 	}
 }
 
@@ -101,10 +114,10 @@ fn load_rgb_image(image_path: &Path, width: usize, height: usize) -> ndarray::Ar
 	array
 }
 
-pub fn load_image_input(input_image: &Path, input_shape: &[usize]) -> Option<ArrayBase<ndarray::OwnedRepr<f32>, ndarray::IxDyn>> {
-	if input_shape.len() == 3 {
-		let mut w = input_shape[1];
-		let mut h = input_shape[2];
+pub fn load_image_input(input_image: &Path, input_shape: &Shape) -> Option<ArrayBase<ndarray::OwnedRepr<f32>, ndarray::IxDyn>> {
+	if input_shape.rank() == 3 {
+		let mut w = input_shape.dim(1) as usize;
+		let mut h = input_shape.dim(2) as usize;
 		if w == 0 {
 			w = 224;
 		}
@@ -112,18 +125,18 @@ pub fn load_image_input(input_image: &Path, input_shape: &[usize]) -> Option<Arr
 			h = 224;
 		}
 
-		if input_shape[0] == 3 {
+		if input_shape.dim(0) == 3 {
 			log::info!("input is (3,?,?), loading as RGB image");
 			Some(load_rgb_image(input_image, w, h).into_dyn())
-		} else if input_shape[0] == 1 {
+		} else if input_shape.dim(0) == 1 {
 			log::info!("input is (1,?,?), loading as BW image");
 			Some(load_bw_image(input_image, w, h).into_dyn())
 		} else {
 			None
 		}
-	} else if input_shape.len() == 4 {
-		let mut w = input_shape[2];
-		let mut h = input_shape[3];
+	} else if input_shape.rank() == 4 {
+		let mut w = input_shape.dim(2) as usize;
+		let mut h = input_shape.dim(3) as usize;
 		if w == 0 {
 			w = 224;
 		}
@@ -131,10 +144,10 @@ pub fn load_image_input(input_image: &Path, input_shape: &[usize]) -> Option<Arr
 			h = 224;
 		}
 
-		if input_shape[1] == 3 {
+		if input_shape.dim(1) == 3 {
 			log::info!("input is (?,3,?,?), loading as RGB image");
 			Some(load_rgb_image(input_image, w, h).into_dyn())
-		} else if input_shape[1] == 1 {
+		} else if input_shape.dim(1) == 1 {
 			log::info!("input is (?,1,?,?), loading as BW image");
 			Some(load_bw_image(input_image, w, h).into_dyn())
 		} else {
@@ -145,7 +158,7 @@ pub fn load_image_input(input_image: &Path, input_shape: &[usize]) -> Option<Arr
 	}
 }
 
-pub fn get_labels(path: &Path) -> Vec<String> {
+pub fn get_lines(path: &Path) -> Vec<String> {
 	let file = BufReader::new(File::open(path).unwrap());
 	file.lines().map(|line| line.unwrap()).collect()
 }

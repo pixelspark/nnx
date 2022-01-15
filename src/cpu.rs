@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{InferOptions, Inferer, NNXError};
 use async_trait::async_trait;
 use tract_onnx::prelude::*;
-use wonnx::onnx::ModelProto;
+use wonnx::{onnx::ModelProto, utils::Shape};
 
 type RunnableOnnxModel = SimplePlan<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>;
 
@@ -12,12 +12,12 @@ pub struct CPUInferer {
 }
 
 impl CPUInferer {
-	pub async fn new(model_path: &str, input_shapes: &HashMap<String, Vec<usize>>) -> Result<CPUInferer, NNXError> {
+	pub async fn new(model_path: &str, input_shapes: &HashMap<String, Shape>) -> Result<CPUInferer, NNXError> {
 		let mut cpu_model = tract_onnx::onnx().model_for_path(&model_path)?;
 
 		for (input_name, input_shape) in input_shapes {
 			let input_node = cpu_model.node_by_name(&input_name)?.id;
-			let fact = InferenceFact::dt_shape(f32::datum_type(), input_shape);
+			let fact = InferenceFact::dt_shape(f32::datum_type(), &input_shape.dims);
 			log::info!("set input '{}' (id {}) to shape {:?}", input_name, input_node, input_shape);
 			cpu_model.set_input_fact(input_node, fact)?;
 		}
@@ -42,9 +42,11 @@ impl Inferer for CPUInferer {
 				.unwrap_or_else(|| panic!("input not found with name {}", input_name));
 			log::info!("set input fact {} for cpu model (shape: {:?})", input_index.0, input_tensor.shape);
 
+			let dims: Vec<usize> = input_tensor.shape.dims.iter().map(|x| (*x) as usize).collect();
+
 			cpu_inputs.insert(
 				input_index.0,
-				tract_onnx::prelude::Tensor::from_shape(&input_tensor.shape, input_tensor.data.as_slice().unwrap())?,
+				tract_onnx::prelude::Tensor::from_shape(&dims, input_tensor.data.as_slice().unwrap())?,
 			);
 		}
 

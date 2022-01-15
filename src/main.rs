@@ -1,13 +1,14 @@
 use async_trait::async_trait;
-use ndarray::ArrayBase;
+use ndarray::{Array, ArrayBase};
 use protobuf::{self, Message};
-use std::collections::HashMap;
 use std::time::Instant;
+use std::{collections::HashMap, path::Path};
 use structopt::StructOpt;
-
 use wonnx::onnx::ModelProto;
+use wonnx::utils::Shape;
 
 mod gpu;
+mod text;
 
 mod util;
 use util::*;
@@ -54,24 +55,57 @@ async fn run() -> Result<(), NNXError> {
 				None => model.get_graph().get_input()[0].get_name().to_string(),
 			};
 
-			let input_info = model
-				.get_graph()
-				.get_input()
-				.iter()
-				.find(|x| x.get_name() == input_name)
-				.expect("input not found");
-			let input_shape = input_info.input_dimensions();
+			let input_shape = model.get_input_shape(&input_name).ok_or_else(|| NNXError::InputNotFound(input_name.clone()))?;
+
 			if debug {
-				log::info!(
-					"Using input: {} ({})",
-					input_name,
-					input_shape.iter().map(|x| x.to_string()).collect::<Vec<_>>().join("x")
-				);
+				log::info!("Using input: {} ({})", input_name, input_shape);
 			}
 
 			let mut inputs: HashMap<String, Tensor> = HashMap::new();
-			let mut input_shapes = HashMap::new();
 
+			if !infer_opt.text.is_empty() || !infer_opt.text_mask.is_empty() {
+				let tok = text::BertTokenizer::new(Path::new("./data/bertsquad-vocab.txt"));
+
+				// Tokenized text input
+				for (text_input_name, text) in &infer_opt.text {
+					let text_input_shape = model
+						.get_input_shape(text_input_name)
+						.ok_or_else(|| NNXError::InputNotFound(text_input_name.clone()))?;
+					let input = tok.get_input_for(text, &text_input_shape)?;
+					log::info!("Set {} ({})={}: tokens={:?}", text_input_name, text_input_shape, text, input.data);
+					inputs.insert(text_input_name.clone(), input);
+				}
+
+				// Tokenized text input
+				for (text_input_name, text) in &infer_opt.text_mask {
+					let text_input_shape = model
+						.get_input_shape(text_input_name)
+						.ok_or_else(|| NNXError::InputNotFound(text_input_name.clone()))?;
+					let input = tok.get_mask_input_for(text, &text_input_shape)?;
+					log::info!("Set {} ({})={}: mask={:?}", text_input_name, text_input_shape, text, input.data);
+					inputs.insert(text_input_name.clone(), input);
+				}
+			}
+
+			// Raw input
+			for (raw_input_name, text) in &infer_opt.raw {
+				let raw_input_shape = model
+					.get_input_shape(raw_input_name)
+					.ok_or_else(|| NNXError::InputNotFound(raw_input_name.clone()))?;
+
+				let values: Result<Vec<f32>, _> = text.split(',').map(|v| v.parse::<f32>()).collect();
+				let mut values = values.map_err(|x| NNXError::TokenizationFailed(x.into()))?;
+				values.resize(raw_input_shape.element_count() as usize, 0.0);
+				inputs.insert(
+					input_name.clone(),
+					Tensor {
+						data: Array::from_vec(values).into_dyn(),
+						shape: raw_input_shape.clone(),
+					},
+				);
+			}
+
+			// Load input image if it was supplied
 			let data: Option<ArrayBase<_, ndarray::IxDyn>> = if let Some(input_image) = &infer_opt.input_image {
 				load_image_input(input_image, &input_shape)
 			} else {
@@ -85,13 +119,18 @@ async fn run() -> Result<(), NNXError> {
 				}
 
 				// Some models allow us to set the number of items we are throwing at them.
-				if shape[0] == 0 {
-					shape[0] = 1;
+				if shape.dim(0) == 0 {
+					shape.dims[0] = 1;
 					log::info!("changing first dimension for input {} to {:?}", input_name, shape);
 				}
 
 				inputs.insert(input_name.clone(), Tensor { data: d, shape: shape.clone() });
-				input_shapes.insert(input_name, shape);
+			}
+
+			// Collect input shape data
+			let mut input_shapes = HashMap::with_capacity(inputs.len());
+			for (k, v) in &inputs {
+				input_shapes.insert(k.clone(), v.shape.clone());
 			}
 
 			#[cfg(feature = "cpu")]
@@ -183,7 +222,7 @@ async fn run() -> Result<(), NNXError> {
 			// Look up label
 			match infer_opt.labels {
 				Some(labels_path) => {
-					let labels = get_labels(&labels_path);
+					let labels = get_lines(&labels_path);
 
 					let mut probabilities = output.iter().enumerate().collect::<Vec<_>>();
 					probabilities.sort_unstable_by(|a, b| b.1.partial_cmp(a.1).unwrap());
@@ -232,7 +271,7 @@ impl Backend {
 		}
 	}
 
-	async fn for_model(&self, model_path: &str, input_shapes: &HashMap<String, Vec<usize>>) -> Result<Box<dyn Inferer>, NNXError> {
+	async fn for_model(&self, model_path: &str, input_shapes: &HashMap<String, Shape>) -> Result<Box<dyn Inferer>, NNXError> {
 		Ok(match self {
 			Backend::Gpu => Box::new(gpu::GPUInferer::new(model_path).await?),
 			#[cfg(feature = "cpu")]

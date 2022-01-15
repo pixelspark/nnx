@@ -2,7 +2,7 @@ use ndarray::ArrayBase;
 use std::{path::PathBuf, str::FromStr};
 use structopt::StructOpt;
 use thiserror::Error;
-use wonnx::{SessionError, WonnxError};
+use wonnx::{utils::Shape, SessionError, WonnxError};
 
 #[cfg(feature = "cpu")]
 use tract_onnx::prelude::*;
@@ -23,7 +23,7 @@ pub enum Backend {
 
 pub struct Tensor {
 	pub data: ArrayBase<ndarray::OwnedRepr<f32>, ndarray::IxDyn>,
-	pub shape: Vec<usize>,
+	pub shape: Shape,
 }
 
 #[derive(Error, Debug)]
@@ -36,6 +36,9 @@ pub enum NNXError {
 
 	#[error("output not found")]
 	OutputNotFound(String),
+
+	#[error("input not found")]
+	InputNotFound(String),
 
 	#[error("backend error: {0}")]
 	BackendFailed(#[from] WonnxError),
@@ -50,6 +53,9 @@ pub enum NNXError {
 	#[cfg(feature = "cpu")]
 	#[error("comparison failed")]
 	Comparison(String),
+
+	#[error("tokenization failed: {0}")]
+	TokenizationFailed(Box<dyn std::error::Error + Sync + Send>),
 }
 
 impl FromStr for Backend {
@@ -63,6 +69,18 @@ impl FromStr for Backend {
 			_ => Err(NNXError::InvalidBackend(s.to_string())),
 		}
 	}
+}
+
+/// Parse a single key-value pair
+fn parse_key_val<T, U>(s: &str) -> Result<(T, U), Box<dyn std::error::Error>>
+where
+	T: std::str::FromStr,
+	T::Err: std::error::Error + 'static,
+	U: std::str::FromStr,
+	U::Err: std::error::Error + 'static,
+{
+	let pos = s.find('=').ok_or_else(|| format!("invalid KEY=value: no `=` found in `{}`", s))?;
+	Ok((s[..pos].parse()?, s[pos + 1..].parse()?))
 }
 
 #[derive(Debug, StructOpt)]
@@ -93,6 +111,18 @@ pub struct InferOptions {
 	/// Node to feed input to (defaults to the first input when not specified)
 	#[structopt(long)]
 	pub input_name: Option<String>,
+
+	/// Set an input to tokenized text (-t input_name="some text")
+	#[structopt(short = "t", parse(try_from_str = parse_key_val), number_of_values = 1)]
+	pub text: Vec<(String, String)>,
+
+	/// Set an input to the mask after tokenizing (-m input_name="some text")
+	#[structopt(short = "m", parse(try_from_str = parse_key_val), number_of_values = 1)]
+	pub text_mask: Vec<(String, String)>,
+
+	/// Provide raw input (-r input_name=1,2,3,4)
+	#[structopt(short = "r", parse(try_from_str = parse_key_val), number_of_values = 1)]
+	pub raw: Vec<(String, String)>,
 
 	/// Path to a labels file (each line containing a single label)
 	#[structopt(short, long, parse(from_os_str))]
