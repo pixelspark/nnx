@@ -32,7 +32,7 @@ run a model. Currently the following heuristics are applied:
 ## Usage
 
 ```sh
-$ nnx infer ./data/squeezenet.onnx ./data/coffee.png --labels ./data/squeezenet-labels.txt
+$ nnx infer ./data/squeezenet.onnx -i data=./data/coffee.png --labels ./data/squeezenet-labels.txt
 n03063689 coffeepot: 22.261997
 n03297495 espresso maker: 20.724543
 n02791124 barber chair: 18.916985
