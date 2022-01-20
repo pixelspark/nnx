@@ -1,7 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
 use prettytable::{cell, row, table, Table};
-use wonnx::onnx::{ModelProto, NodeProto};
+use wonnx::{
+	onnx::{ModelProto, NodeProto},
+	utils::dimensions_infos,
+};
 
 use crate::util::ValueInfoProtoUtil;
 
@@ -101,6 +104,17 @@ pub fn info_table(model: &ModelProto) -> Table {
 	for (op, usage) in usage.iter() {
 		let attrs = usage.attributes.iter().cloned().collect::<Vec<String>>().join(", ");
 		usage_table.add_row(row![op, attrs]);
+	}
+
+	// List node inputs/outputs that don't have dimensions
+	let shapes = dimensions_infos(graph);
+	for node in graph.get_node() {
+		for input in node.get_input() {
+			match shapes.get(input) {
+				None => println!("Node '{}' input '{}' has unknown shape", node.get_name(), input),
+				Some(s) => println!("Node '{}' input '{}' has shape {}", node.get_name(), input, s),
+			}
+		}
 	}
 
 	table![
