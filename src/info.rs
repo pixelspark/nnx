@@ -29,9 +29,9 @@ pub fn print_graph(model: &ModelProto) {
 			if initializers.contains(input.as_str()) {
 				continue;
 			}
-			
+
 			if model_inputs.contains(input.as_str()) {
-				println!("\t\"Input {}\" --> {}", input, node_identifier(index, node));
+				println!("\t\"Input {}\" -> {}", input, node_identifier(index, node));
 			}
 			// Find input node
 			else if let Some(out_from_node) = outputs.get(input) {
