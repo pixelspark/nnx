@@ -2,11 +2,37 @@ use std::collections::{HashMap, HashSet};
 
 use prettytable::{cell, row, table, Table};
 use wonnx::{
-	onnx::{ModelProto, NodeProto},
-	utils::dimensions_infos,
+	onnx::{GraphProto, ModelProto, NodeProto},
+	utils::Shape,
 };
 
 use crate::util::ValueInfoProtoUtil;
+
+fn dimensions_infos(graph_proto: &GraphProto) -> HashMap<String, Shape> {
+	let mut shapes_info = HashMap::new();
+
+	for info in graph_proto.get_input() {
+		let shape = info.get_shape();
+		shapes_info.insert(info.get_name().to_string(), shape);
+	}
+
+	for info in graph_proto.get_output() {
+		let shape = info.get_shape();
+		shapes_info.insert(info.get_name().to_string(), shape);
+	}
+
+	for info in graph_proto.get_value_info() {
+		let shape = info.get_shape();
+		shapes_info.insert(info.get_name().to_string(), shape);
+	}
+
+	for info in graph_proto.get_initializer() {
+		let shape = Shape::from(info.get_dims());
+		shapes_info.insert(info.get_name().to_string(), shape);
+	}
+
+	shapes_info
+}
 
 fn node_identifier(index: usize, node: &NodeProto) -> String {
 	format!("\"{} {}\"", index, node.get_op_type())
@@ -48,15 +74,20 @@ pub fn print_graph(model: &ModelProto) {
 }
 
 pub fn info_table(model: &ModelProto) -> Table {
+	// List initializers
+	let initializer_names: HashSet<String> = model.get_graph().get_initializer().iter().map(|it| it.get_name().to_string()).collect();
+
 	let mut inputs_table = Table::new();
 	inputs_table.add_row(row![b->"Name", b->"Description", b->"Shape"]);
 	let inputs = model.get_graph().get_input();
 	for i in inputs {
-		inputs_table.add_row(row![
-			i.get_name(),
-			i.get_doc_string(),
-			i.input_dimensions().iter().map(|x| x.to_string()).collect::<Vec<String>>().join("x")
-		]);
+		if !initializer_names.contains(i.get_name()) {
+			inputs_table.add_row(row![
+				i.get_name(),
+				i.get_doc_string(),
+				i.input_dimensions().iter().map(|x| x.to_string()).collect::<Vec<String>>().join("x")
+			]);
+		}
 	}
 
 	let mut outputs_table = Table::new();
@@ -112,7 +143,7 @@ pub fn info_table(model: &ModelProto) -> Table {
 		for input in node.get_input() {
 			match shapes.get(input) {
 				None => println!("Node '{}' input '{}' has unknown shape", node.get_name(), input),
-				Some(s) => println!("Node '{}' input '{}' has shape {}", node.get_name(), input, s),
+				Some(_) => {}
 			}
 		}
 	}
