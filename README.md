@@ -11,7 +11,7 @@ images as fixed-size tensors with the pixel values normalized to specific values
 
 This project provides a very simple all-in-one binary command line tool that can be used to perform inference using ONNX
 models on the GPU. Thanks to the [wonnx](https://github.com/haixuanTao/wonnx) library inference is performed on the GPU
-through [wgpu][https://wgpu.rs], which is a Rust implementation of the WebGPU standard, supported on Windows, macOS, Linux
+through [wgpu](https://wgpu.rs), which is a Rust implementation of the WebGPU standard, supported on Windows, macOS, Linux
 and (in the future) even inside the browser, without having to install specific drivers (wgpu will use Direct3D, Metal or
 Vulkan depending on the platform). NNX will fall back to inference on the CPU (through [tract](https://github.com/sonos/tract))
 when compiled with feature 'cpu' (selected by default). It is possible to force using the CPU backend by specifying `--backend=cpu`.
