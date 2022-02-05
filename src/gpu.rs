@@ -22,7 +22,7 @@ impl GPUInferer {
 impl Inferer for GPUInferer {
 	async fn infer(&self, infer_opt: &InferOptions, inputs: &HashMap<String, crate::Tensor>, _model: &ModelProto) -> Result<Vec<f32>, NNXError> {
 		let input_refs = inputs.iter().map(|(k, v)| (k.clone(), v.data.as_slice().unwrap())).collect();
-		let mut result = self.session.run(input_refs).await.expect("run failed");
+		let mut result = self.session.run(&input_refs).await.expect("run failed");
 
 		let result = match &infer_opt.output_name {
 			Some(output_name) => match result.remove(output_name) {
