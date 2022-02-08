@@ -1631,6 +1631,7 @@ dependencies = [
  "thiserror",
  "tokenizers",
  "tract-onnx",
+ "wgpu",
  "wonnx",
 ]
 

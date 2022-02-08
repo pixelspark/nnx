@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use ndarray::Array;
+use prettytable::{cell, row, Table};
 use protobuf::{self, Message};
 use std::time::Instant;
 use std::{collections::HashMap, path::Path};
@@ -24,6 +25,19 @@ async fn run() -> Result<(), NNXError> {
 	let opt = Opt::from_args();
 
 	match opt.cmd {
+		Command::Devices => {
+			let instance = wgpu::Instance::new(wgpu::Backends::all());
+			let adapters = instance.enumerate_adapters(wgpu::Backends::all());
+			let mut adapters_table = Table::new();
+			adapters_table.add_row(row![b->"Adapter", b->"Vendor", b->"Backend"]);
+			for adapter in adapters {
+				let info = adapter.get_info();
+				adapters_table.add_row(row![info.name, info.vendor, format!("{:?}", info.backend)]);
+			}
+			adapters_table.printstd();
+			Ok(())
+		}
+
 		Command::Info(info_opt) => {
 			// Load the model
 			let model_path = info_opt.model.into_os_string().into_string().expect("invalid path");

@@ -142,6 +142,9 @@ pub struct InferOptions {
 
 #[derive(Debug, StructOpt)]
 pub enum Command {
+	/// List available GPU devices
+	Devices,
+
 	/// Perform inference using a model and inputs
 	Infer(InferOptions),
 
@@ -153,7 +156,7 @@ pub enum Command {
 }
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "nnx", about = "GPU-accelerated ONNX inference from the command line")]
+#[structopt(name = "nnx", about = "NNX = Neural Network Execute. GPU-accelerated ONNX inference from the command line")]
 pub struct Opt {
 	#[structopt(subcommand)]
 	pub cmd: Command,
