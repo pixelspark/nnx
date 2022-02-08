@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use wonnx::onnx::ModelProto;
+use wonnx::{onnx::ModelProto, utils::InputTensor};
 
 use async_trait::async_trait;
 
@@ -21,7 +21,7 @@ impl GPUInferer {
 #[async_trait]
 impl Inferer for GPUInferer {
 	async fn infer(&self, infer_opt: &InferOptions, inputs: &HashMap<String, crate::Tensor>, _model: &ModelProto) -> Result<Vec<f32>, NNXError> {
-		let input_refs = inputs.iter().map(|(k, v)| (k.clone(), v.data.as_slice().unwrap())).collect();
+		let input_refs = inputs.iter().map(|(k, v)| (k.clone(), InputTensor::F32(v.data.as_slice().unwrap()))).collect();
 		let mut result = self.session.run(&input_refs).await.expect("run failed");
 
 		let result = match &infer_opt.output_name {

@@ -3,35 +3,36 @@ use std::collections::{HashMap, HashSet};
 use prettytable::{cell, row, table, Table};
 use wonnx::{
 	onnx::{GraphProto, ModelProto, NodeProto},
-	utils::Shape,
+	utils::{ScalarType, Shape},
+	WonnxError,
 };
 
 use crate::util::ValueInfoProtoUtil;
 
-fn dimensions_infos(graph_proto: &GraphProto) -> HashMap<String, Shape> {
+fn dimensions_infos(graph_proto: &GraphProto) -> Result<HashMap<String, Shape>, wonnx::WonnxError> {
 	let mut shapes_info = HashMap::new();
 
 	for info in graph_proto.get_input() {
-		let shape = info.get_shape();
+		let shape = info.get_shape()?;
 		shapes_info.insert(info.get_name().to_string(), shape);
 	}
 
 	for info in graph_proto.get_output() {
-		let shape = info.get_shape();
+		let shape = info.get_shape()?;
 		shapes_info.insert(info.get_name().to_string(), shape);
 	}
 
 	for info in graph_proto.get_value_info() {
-		let shape = info.get_shape();
+		let shape = info.get_shape()?;
 		shapes_info.insert(info.get_name().to_string(), shape);
 	}
 
 	for info in graph_proto.get_initializer() {
-		let shape = Shape::from(info.get_dims());
+		let shape = Shape::from(ScalarType::from_i32(info.get_data_type())?, info.get_dims());
 		shapes_info.insert(info.get_name().to_string(), shape);
 	}
 
-	shapes_info
+	Ok(shapes_info)
 }
 
 fn node_identifier(index: usize, node: &NodeProto) -> String {
@@ -73,32 +74,34 @@ pub fn print_graph(model: &ModelProto) {
 	println!("}}");
 }
 
-pub fn info_table(model: &ModelProto) -> Table {
+pub fn info_table(model: &ModelProto) -> Result<Table, WonnxError> {
 	// List initializers
 	let initializer_names: HashSet<String> = model.get_graph().get_initializer().iter().map(|it| it.get_name().to_string()).collect();
 
 	let mut inputs_table = Table::new();
-	inputs_table.add_row(row![b->"Name", b->"Description", b->"Shape"]);
+	inputs_table.add_row(row![b->"Name", b->"Description", b->"Shape", b->"Type"]);
 	let inputs = model.get_graph().get_input();
 	for i in inputs {
 		if !initializer_names.contains(i.get_name()) {
 			inputs_table.add_row(row![
 				i.get_name(),
 				i.get_doc_string(),
-				i.input_dimensions().iter().map(|x| x.to_string()).collect::<Vec<String>>().join("x")
+				i.dimensions().iter().map(|x| x.to_string()).collect::<Vec<String>>().join("x"),
+				i.data_type()?
 			]);
 		}
 	}
 
 	let mut outputs_table = Table::new();
-	outputs_table.add_row(row![b->"Name", b->"Description", b->"Shape"]);
+	outputs_table.add_row(row![b->"Name", b->"Description", b->"Shape", b->"Type"]);
 
 	let outputs = model.get_graph().get_output();
 	for i in outputs {
 		outputs_table.add_row(row![
 			i.get_name(),
 			i.get_doc_string(),
-			i.input_dimensions().iter().map(|x| x.to_string()).collect::<Vec<String>>().join("x")
+			i.dimensions().iter().map(|x| x.to_string()).collect::<Vec<String>>().join("x"),
+			i.data_type()?
 		]);
 	}
 
@@ -138,7 +141,7 @@ pub fn info_table(model: &ModelProto) -> Table {
 	}
 
 	// List node inputs/outputs that don't have dimensions
-	let shapes = dimensions_infos(graph);
+	let shapes = dimensions_infos(graph)?;
 	for node in graph.get_node() {
 		for input in node.get_input() {
 			match shapes.get(input) {
@@ -148,7 +151,7 @@ pub fn info_table(model: &ModelProto) -> Table {
 		}
 	}
 
-	table![
+	Ok(table![
 		[b->"Model version", model.get_model_version()],
 		[b->"IR version", model.get_ir_version()],
 		[b->"Producer name", model.get_producer_name()],
@@ -157,5 +160,5 @@ pub fn info_table(model: &ModelProto) -> Table {
 		[b->"Inputs", inputs_table],
 		[b->"Outputs", outputs_table],
 		[b->"Ops used", usage_table]
-	]
+	])
 }

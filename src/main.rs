@@ -43,7 +43,7 @@ async fn run() -> Result<(), NNXError> {
 			let model_path = info_opt.model.into_os_string().into_string().expect("invalid path");
 			let model =
 				ModelProto::parse_from_bytes(&std::fs::read(&model_path).expect("ONNX Model path not found.")).expect("Could not deserialize the model");
-			let table = info_table(&model);
+			let table = info_table(&model)?;
 			table.printstd();
 			Ok(())
 		}
@@ -72,7 +72,7 @@ async fn run() -> Result<(), NNXError> {
 				// Tokenized text input
 				for (text_input_name, text) in &infer_opt.text {
 					let text_input_shape = model
-						.get_input_shape(text_input_name)
+						.get_input_shape(text_input_name)?
 						.ok_or_else(|| NNXError::InputNotFound(text_input_name.clone()))?;
 					let input = tok.get_input_for(text, &text_input_shape)?;
 					log::info!("Set {} ({})={}: tokens={:?}", text_input_name, text_input_shape, text, input.data);
@@ -82,7 +82,7 @@ async fn run() -> Result<(), NNXError> {
 				// Tokenized text input
 				for (text_input_name, text) in &infer_opt.text_mask {
 					let text_input_shape = model
-						.get_input_shape(text_input_name)
+						.get_input_shape(text_input_name)?
 						.ok_or_else(|| NNXError::InputNotFound(text_input_name.clone()))?;
 					let input = tok.get_mask_input_for(text, &text_input_shape)?;
 					log::info!("Set {} ({})={}: mask={:?}", text_input_name, text_input_shape, text, input.data);
@@ -93,7 +93,7 @@ async fn run() -> Result<(), NNXError> {
 			// Process raw inputs
 			for (raw_input_name, text) in &infer_opt.raw {
 				let raw_input_shape = model
-					.get_input_shape(raw_input_name)
+					.get_input_shape(raw_input_name)?
 					.ok_or_else(|| NNXError::InputNotFound(raw_input_name.clone()))?;
 
 				let values: Result<Vec<f32>, _> = text.split(',').map(|v| v.parse::<f32>()).collect();
@@ -110,7 +110,7 @@ async fn run() -> Result<(), NNXError> {
 
 			// Load input image if it was supplied
 			for (input_name, image_path) in &infer_opt.input_images {
-				let mut input_shape = model.get_input_shape(input_name).ok_or_else(|| NNXError::InputNotFound(input_name.clone()))?;
+				let mut input_shape = model.get_input_shape(input_name)?.ok_or_else(|| NNXError::InputNotFound(input_name.clone()))?;
 
 				let data = load_image_input(image_path, &input_shape)?;
 

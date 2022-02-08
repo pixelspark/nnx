@@ -4,13 +4,15 @@ use ndarray::{s, ArrayBase};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-use wonnx::utils::Shape;
+use wonnx::utils::{DataTypeError, ScalarType, Shape};
+use wonnx::WonnxError;
 
 use wonnx::onnx::{ModelProto, TensorShapeProto, ValueInfoProto};
 
 use crate::types::NNXError;
 pub trait ValueInfoProtoUtil {
-	fn input_dimensions(&self) -> Vec<usize>;
+	fn dimensions(&self) -> Vec<usize>;
+	fn data_type(&self) -> Result<ScalarType, DataTypeError>;
 }
 
 pub trait TensorShapeProtoUtil {
@@ -18,7 +20,7 @@ pub trait TensorShapeProtoUtil {
 }
 
 impl ValueInfoProtoUtil for ValueInfoProto {
-	fn input_dimensions(&self) -> Vec<usize> {
+	fn dimensions(&self) -> Vec<usize> {
 		match &self.get_field_type().value {
 			Some(x) => match x {
 				wonnx::onnx::TypeProto_oneof_value::tensor_type(t) => t.get_shape().shape_dimensions(),
@@ -29,6 +31,19 @@ impl ValueInfoProtoUtil for ValueInfoProto {
 			},
 			None => vec![],
 		}
+	}
+
+	fn data_type(&self) -> Result<ScalarType, DataTypeError> {
+		Ok(match &self.get_field_type().value {
+			Some(x) => match x {
+				wonnx::onnx::TypeProto_oneof_value::tensor_type(t) => ScalarType::from_i32(t.get_elem_type())?,
+				wonnx::onnx::TypeProto_oneof_value::sequence_type(_) => todo!(),
+				wonnx::onnx::TypeProto_oneof_value::map_type(_) => todo!(),
+				wonnx::onnx::TypeProto_oneof_value::optional_type(_) => todo!(),
+				wonnx::onnx::TypeProto_oneof_value::sparse_tensor_type(_) => todo!(),
+			},
+			None => return Err(DataTypeError::Undefined),
+		})
 	}
 }
 
@@ -45,13 +60,16 @@ impl TensorShapeProtoUtil for TensorShapeProto {
 }
 
 pub trait ModelProtoUtil {
-	fn get_input_shape(&self, input_name: &str) -> Option<Shape>;
+	fn get_input_shape(&self, input_name: &str) -> Result<Option<Shape>, WonnxError>;
 }
 
 impl ModelProtoUtil for ModelProto {
-	fn get_input_shape(&self, input_name: &str) -> Option<Shape> {
+	fn get_input_shape(&self, input_name: &str) -> Result<Option<Shape>, WonnxError> {
 		let value_info = self.get_graph().get_input().iter().find(|x| x.get_name() == input_name);
-		value_info.map(|vi| vi.get_shape())
+		match value_info {
+			Some(vi) => Ok(Some(vi.get_shape()?)),
+			None => Ok(None),
+		}
 	}
 }
 
